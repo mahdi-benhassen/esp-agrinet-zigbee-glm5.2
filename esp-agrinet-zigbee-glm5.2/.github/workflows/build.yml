@@ -1,0 +1,202 @@
+name: Build Firmware
+
+on:
+  push:
+    branches: [main, master, develop]
+  pull_request:
+    branches: [main, master]
+  workflow_dispatch:
+
+jobs:
+  # ----------------------------------------------------------------------
+  # Build the gateway host firmware (ESP32-S3)
+  # ----------------------------------------------------------------------
+  build-gateway:
+    name: Gateway (ESP32-S3)
+    runs-on: ubuntu-22.04
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Install ESP-IDF
+        uses: espressif/esp-idf-ci-action@v1
+        with:
+          esp_idf_version: v5.2.3
+          target: esp32s3
+          path: ${{ github.workspace }}
+
+      - name: Build gateway
+        run: |
+          source $IDF_PATH/export.sh
+          cd gateway
+          idf.py set-target esp32s3
+          idf.py build
+
+      - name: Upload build artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: gateway-esp32s3-firmware
+          path: |
+            gateway/build/esp_agrinet_gateway.bin
+            gateway/build/bootloader/bootloader.bin
+            gateway/build/partition_table/partition-table.bin
+          if-no-files-found: warn
+
+  # ----------------------------------------------------------------------
+  # Build the sensor node firmware (ESP32-H2)
+  # ----------------------------------------------------------------------
+  build-sensor-node:
+    name: Sensor Node (ESP32-H2)
+    runs-on: ubuntu-22.04
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Install ESP-IDF
+        uses: espressif/esp-idf-ci-action@v1
+        with:
+          esp_idf_version: v5.2.3
+          target: esp32h2
+          path: ${{ github.workspace }}
+
+      - name: Build sensor node
+        run: |
+          source $IDF_PATH/export.sh
+          cd nodes/sensor_node
+          idf.py set-target esp32h2
+          idf.py build
+
+      - name: Upload build artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: sensor-node-esp32h2-firmware
+          path: |
+            nodes/sensor_node/build/esp_agrinet_sensor_node.bin
+            nodes/sensor_node/build/bootloader/bootloader.bin
+            nodes/sensor_node/build/partition_table/partition-table.bin
+          if-no-files-found: warn
+
+  # ----------------------------------------------------------------------
+  # Build the actuator node firmware (ESP32-H2)
+  # ----------------------------------------------------------------------
+  build-actuator-node:
+    name: Actuator Node (ESP32-H2)
+    runs-on: ubuntu-22.04
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Install ESP-IDF
+        uses: espressif/esp-idf-ci-action@v1
+        with:
+          esp_idf_version: v5.2.3
+          target: esp32h2
+          path: ${{ github.workspace }}
+
+      - name: Build actuator node
+        run: |
+          source $IDF_PATH/export.sh
+          cd nodes/actuator_node
+          idf.py set-target esp32h2
+          idf.py build
+
+      - name: Upload build artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: actuator-node-esp32h2-firmware
+          path: |
+            nodes/actuator_node/build/esp_agrinet_actuator_node.bin
+            nodes/actuator_node/build/bootloader/bootloader.bin
+            nodes/actuator_node/build/partition_table/partition-table.bin
+          if-no-files-found: warn
+
+  # ----------------------------------------------------------------------
+  # Build the ESP32-H2 RCP firmware (radio coprocessor for the gateway)
+  # ----------------------------------------------------------------------
+  build-rcp:
+    name: RCP (ESP32-H2 radio coprocessor)
+    runs-on: ubuntu-22.04
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Install ESP-IDF
+        uses: espressif/esp-idf-ci-action@v1
+        with:
+          esp_idf_version: v5.2.3
+          target: esp32h2
+          path: ${{ github.workspace }}
+
+      - name: Clone esp-zigbee-sdk
+        run: |
+          git clone --depth=1 --branch v0.5.0 \
+            https://github.com/espressif/esp-zigbee-sdk.git \
+            ${{ github.workspace }}/esp-zigbee-sdk
+
+      - name: Copy sdkconfig
+        run: |
+          cp rcp/sdkconfig.defaults \
+             ${{ github.workspace }}/esp-zigbee-sdk/examples/esp_zigbee_gw/rcp/sdkconfig.defaults
+
+      - name: Build RCP
+        run: |
+          source $IDF_PATH/export.sh
+          cd ${{ github.workspace }}/esp-zigbee-sdk/examples/esp_zigbee_gw/rcp
+          idf.py set-target esp32h2
+          idf.py build
+
+      - name: Upload build artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: rcp-esp32h2-firmware
+          path: |
+            ${{ github.workspace }}/esp-zigbee-sdk/examples/esp_zigbee_gw/rcp/build/*.bin
+            ${{ github.workspace }}/esp-zigbee-sdk/examples/esp_zigbee_gw/rcp/build/bootloader/bootloader.bin
+            ${{ github.workspace }}/esp-zigbee-sdk/examples/esp_zigbee_gw/rcp/build/partition_table/partition-table.bin
+          if-no-files-found: warn
+
+  # ----------------------------------------------------------------------
+  # Code formatting & static checks (lightweight)
+  # ----------------------------------------------------------------------
+  lint:
+    name: Lint (clang-format check)
+    runs-on: ubuntu-22.04
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install clang-format
+        run: sudo apt-get update && sudo apt-get install -y clang-format
+
+      - name: Check formatting
+        run: |
+          set -e
+          FILES=$(find . -path ./build -prune -o \
+                       -path ./.git -prune -o \
+                       -name '*.c' -print -o -name '*.h' -print | \
+                       grep -v 'build/')
+          if [ -z "$FILES" ]; then
+            echo "No source files to lint"
+            exit 0
+          fi
+          echo "$FILES" | xargs clang-format --dry-run --Werror || \
+            (echo "Formatting issues found. Run 'clang-format -i **/*.c **/*.h' to fix."; exit 1)
+
+  # ----------------------------------------------------------------------
+  # Aggregate job - allows branch protection to require a single job
+  # ----------------------------------------------------------------------
+  ci-success:
+    name: CI Success
+    runs-on: ubuntu-22.04
+    needs: [build-gateway, build-sensor-node, build-actuator-node, build-rcp, lint]
+    steps:
+      - name: All builds passed
+        run: echo "All firmware builds and lint checks passed."

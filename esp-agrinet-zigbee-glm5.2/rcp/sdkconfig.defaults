@@ -1,0 +1,20 @@
+# ESP32-H2 Radio Coprocessor (RCP) configuration
+#
+# The ESP32-H2 firmware that runs on the gateway's radio side.
+# It uses esp-hosty / esp-zigbee-sdk's RCP example which we don't
+# duplicate here - instead we provide the sdkconfig and CMake
+# wrappers needed to build it.
+#
+# In production, use esp-zigbee-sdk/examples/esp_zigbee_gw/rcp and
+# flash that to the ESP32-H2 of the gateway. This folder keeps the
+# sdkconfig.defaults used in this project's CI.
+
+CONFIG_IDF_TARGET="esp32h2"
+CONFIG_ZB_ENABLED=y
+CONFIG_ZB_RCP=y
+CONFIG_ZB_CHANNEL=15
+CONFIG_ZB_TX_POWER=20
+CONFIG_ESP_CONSOLE_UART_DEFAULT=y
+CONFIG_ESP_CONSOLE_UART_CUSTOM=y
+CONFIG_ESP_CONSOLE_UART_CUSTOM_NUM=1
+CONFIG_ESP_CONSOLE_SECONDARY_USB_SERIAL_JTAG=n

@@ -1,0 +1,16 @@
+idf_component_register(
+    SRCS
+        "main.c"
+        "app_actuators.c"
+    INCLUDE_DIRS
+        "."
+    REQUIRES
+        agrinet_common
+        esp_zigbee
+        driver_gpio
+        driver_ledc
+        esp_timer
+        nvs_flash
+        esp_log
+        esp_hw_support
+)

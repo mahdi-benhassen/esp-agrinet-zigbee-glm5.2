@@ -1,0 +1,22 @@
+idf_component_register(
+    SRCS
+        "main.c"
+        "app_gateway.c"
+        "app_wifi.c"
+        "app_mqtt.c"
+    INCLUDE_DIRS
+        "."
+    REQUIRES
+        agrinet_common
+        esp_zigbee
+        esp_wifi
+        esp_event
+        esp_netif
+        esp_hw_support
+        nvs_flash
+        mqtt
+        esp_timer
+        esp_log
+        esp_system
+        driver_uart
+)

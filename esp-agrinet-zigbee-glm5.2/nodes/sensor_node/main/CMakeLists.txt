@@ -1,0 +1,17 @@
+idf_component_register(
+    SRCS
+        "main.c"
+        "app_sensors.c"
+    INCLUDE_DIRS
+        "."
+    REQUIRES
+        agrinet_common
+        esp_zigbee
+        driver_i2c
+        driver_adc
+        esp_adc_cal
+        esp_timer
+        nvs_flash
+        esp_log
+        esp_hw_support
+)
