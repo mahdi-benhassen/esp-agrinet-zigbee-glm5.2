@@ -1,8 +1,0 @@
-## IDF Component Manifest for agrinet_common
-## The .c files use esp-zigbee-lib APIs (esp_zb_zcl_set_attribute_val, etc.)
-## so this component needs the zigbee library dependency.
-dependencies:
-  espressif/esp-zigbee-lib: "1.0.9"
-  espressif/esp-zboss-lib: "1.0.9"
-  idf:
-    version: ">=5.2.0"

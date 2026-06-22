@@ -4,4 +4,6 @@ idf_component_register(
         "src/agrinet_mqtt_schema.c"
     INCLUDE_DIRS
         "include"
+    PRIV_REQUIRES
+        espressif__esp-zigbee-lib
 )
