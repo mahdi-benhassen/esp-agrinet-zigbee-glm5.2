@@ -14,6 +14,7 @@
 #pragma once
 
 #include "esp_err.h"
+#include "agrinet_types.h"
 #include <stdint.h>
 #include <stdbool.h>
 

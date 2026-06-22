@@ -10,5 +10,6 @@ idf_component_register(
         espressif__esp-zboss-lib
         driver
         esp_adc
+        esp_timer
         nvs_flash
 )
