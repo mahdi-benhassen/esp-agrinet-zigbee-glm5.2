@@ -216,10 +216,7 @@ static esp_err_t zb_action_handler(esp_zb_core_action_callback_id_t callback_id,
 {
     switch (callback_id) {
     case ESP_ZB_CORE_REPORT_ATTR_CB_ID: {
-        const esp_zb_zcl_report_attr_message_t *rpt =
-            (const esp_zb_zcl_report_attr_message_t *)message;
-        AG_LOGD(TAG, "attr report ep=%d cluster=0x%04x",
-                rpt->zcl_basic_cmd.src_endpoint, rpt->cluster);
+        AG_LOGD(TAG, "attr report received");
         break;
     }
     default:
@@ -446,7 +443,7 @@ esp_err_t app_gateway_send_actuator_cmd(const char *node_id,
         .zcl_basic_cmd.src_endpoint = AGRINET_EP_GATEWAY_TELE,
         .zcl_basic_cmd.dst_endpoint = endpoint,
         .zcl_basic_cmd.dst_addr_u.addr_short = node->short_addr,
-        .cmd_id = act_on ? ESP_ZB_ZCL_CMD_ON_OFF_ON_ID
+        .on_off_cmd_id = act_on ? ESP_ZB_ZCL_CMD_ON_OFF_ON_ID
                          : ESP_ZB_ZCL_CMD_ON_OFF_OFF_ID,
     };
     esp_zb_zcl_on_off_cmd_req(&cmd);
