@@ -154,121 +154,108 @@ esp_err_t app_gateway_init(void)
 }
 
 /* --------------------------------------------------------------------- */
-/* Zigbee coordinator callbacks                                          */
+/* Zigbee app signal handler (matches official ESP-IDF v5.2.3 pattern)   */
 /* --------------------------------------------------------------------- */
-static void zb_action_handler(esp_zb_core_action_callback_id_t callback_id,
-                              const void *message)
+void esp_zb_app_signal_handler(esp_zb_app_signal_t *signal_struct)
+{
+    uint32_t *p_sg_p       = signal_struct->p_app_signal;
+    esp_err_t err_status   = signal_struct->esp_err_status;
+    esp_zb_app_signal_type_t sig_type = *p_sg_p;
+
+    switch (sig_type) {
+    case ESP_ZB_ZDO_SIGNAL_SKIP_STARTUP:
+        AG_LOGI(TAG, "Zigbee stack initialized, forming network...");
+        esp_zb_bdb_start_top_level_commissioning(ESP_ZB_BDB_MODE_NETWORK_FORMATION);
+        break;
+    case ESP_ZB_BDB_SIGNAL_FORMATION:
+        if (err_status == ESP_OK) {
+            s_rt.net.pan_id   = esp_zb_get_pan_id();
+            s_rt.net.channel  = esp_zb_get_current_channel();
+            esp_zb_ieee_addr_t ieee_addr;
+            esp_zb_get_long_address(ieee_addr);
+            AG_LOGI(TAG, "Formed network successfully (PAN: 0x%04hx, Channel: %d, Short: 0x%04hx)",
+                     s_rt.net.pan_id, s_rt.net.channel, esp_zb_get_short_address());
+            esp_zb_bdb_start_top_level_commissioning(ESP_ZB_BDB_MODE_NETWORK_STEERING);
+            s_rt.state = AGRINET_GW_STATE_RUNNING;
+        } else {
+            AG_LOGI(TAG, "Restart network formation (status: %s)", esp_err_to_name(err_status));
+        }
+        break;
+    case ESP_ZB_BDB_SIGNAL_STEERING:
+        if (err_status == ESP_OK) {
+            AG_LOGI(TAG, "Network steering started");
+        }
+        break;
+    case ESP_ZB_ZDO_SIGNAL_DEVICE_ANNCE: {
+        esp_zb_zdo_signal_device_annce_params_t *dev_annce_params =
+            (esp_zb_zdo_signal_device_annce_params_t *)esp_zb_app_signal_get_params(p_sg_p);
+        AG_LOGI(TAG, "New device commissioned (short: 0x%04hx)",
+                dev_annce_params->device_short_addr);
+        break;
+    }
+    case ESP_ZB_NWK_SIGNAL_PERMIT_JOIN_STATUS:
+        if (err_status == ESP_OK) {
+            if (*(uint8_t *)esp_zb_app_signal_get_params(p_sg_p)) {
+                AG_LOGI(TAG, "Network(0x%04hx) is open for joining", esp_zb_get_pan_id());
+            } else {
+                AG_LOGW(TAG, "Network(0x%04hx) closed", esp_zb_get_pan_id());
+            }
+        }
+        break;
+    default:
+        AG_LOGI(TAG, "ZDO signal: 0x%x, status: %s", sig_type, esp_err_to_name(err_status));
+        break;
+    }
+}
+
+/* --------------------------------------------------------------------- */
+/* Zigbee action handler for incoming ZCL commands                        */
+/* --------------------------------------------------------------------- */
+static esp_err_t zb_action_handler(esp_zb_core_action_callback_id_t callback_id,
+                                   const void *message)
 {
     switch (callback_id) {
-    case ESP_ZB_CORE_DEVICE_REPORT_ATTR_CB_ID: {
-        /* A node reported an attribute value */
+    case ESP_ZB_CORE_REPORT_ATTR_CB_ID: {
         const esp_zb_zcl_report_attr_message_t *rpt =
             (const esp_zb_zcl_report_attr_message_t *)message;
-        AG_LOGD(TAG, "attr report ep=%d cluster=0x%04x attr=0x%04x",
-                rpt->zcl_basic_cmd.src_endpoint,
-                rpt->clusterID, rpt->attributeID);
-
-        /* Route the value to the right MQTT topic via the snapshot logic */
-        /* (full routing happens in app_gateway_handle_attr_report) */
-        extern void app_gateway_handle_attr_report(
-            uint16_t src_addr, uint8_t src_ep, uint16_t cluster_id,
-            uint16_t attr_id, const esp_zb_zcl_attr_type_t *val);
-        /* The actual attribute value extraction is delegated to the
-         * gateway's sensor router module - kept simple here. */
-        break;
-    }
-    case ESP_ZB_CORE_DEVICE_JOIN_CB_ID: {
-        AG_LOGI(TAG, "device joined the network");
-        break;
-    }
-    case ESP_ZB_CORE_DEVICE_LEAVE_CB_ID: {
-        AG_LOGW(TAG, "device left the network");
+        AG_LOGD(TAG, "attr report ep=%d cluster=0x%04x",
+                rpt->info.dst_endpoint, rpt->info.cluster);
         break;
     }
     default:
         AG_LOGD(TAG, "zb action 0x%02x", callback_id);
         break;
     }
-}
-
-static void zb_stack_status_cb(esp_zb_zdo_signal_type_t sig, esp_zb_zdo_signal_cb_params_t *params)
-{
-    switch (sig) {
-    case ESP_ZB_ZDO_SIGNAL_SKIP_STARTUP:
-        AG_LOGI(TAG, "Zigbee stack initialised, forming network...");
-        esp_zb_bdb_start_top_level_commissioning(ESP_ZB_BDB_MODE_NETWORK_FORMATION);
-        break;
-    case ESP_ZB_BDB_SIGNAL_FORMATION: {
-        esp_zb_bdb_create_network_t *nwk = &(params->bdb_formed);
-        s_rt.net.pan_id   = nwk->panid;
-        s_rt.net.channel  = nwk->channel;
-        memcpy(s_rt.net.ext_pan_id, nwk->extended_pan_id, 8);
-        s_rt.net.gateway_short_addr[0] = nwk->short_addr & 0xFF;
-        s_rt.net.gateway_short_addr[1] = (nwk->short_addr >> 8) & 0xFF;
-        AG_LOGI(TAG, "network formed: PAN=0x%04X ch=%u addr=0x%04X",
-                s_rt.net.pan_id, s_rt.net.channel, nwk->short_addr);
-        esp_zb_bdb_open_network(180); /* open for joining for 180s */
-        s_rt.state = AGRINET_GW_STATE_RUNNING;
-        break;
-    }
-    case ESP_ZB_ZDO_SIGNAL_DEVICE_UPDATE:
-        AG_LOGI(TAG, "device update received");
-        break;
-    case ESP_ZB_NWK_SIGNAL_PERMIT_JOIN_STATUS: {
-        bool permit = params->permit_join_status;
-        AG_LOGI(TAG, "network %s for joining", permit ? "open" : "closed");
-        break;
-    }
-    default:
-        AG_LOGI(TAG, "zb signal 0x%02x", sig);
-        break;
-    }
+    return ESP_OK;
 }
 
 /* --------------------------------------------------------------------- */
-/* Zigbee coordinator setup                                              */
+/* Zigbee coordinator task                                                */
 /* --------------------------------------------------------------------- */
-static esp_err_t start_zigbee_coordinator(void)
+static void esp_zb_task(void *pvParameters)
 {
-    /* Configure RCP (ESP32-H2) transport over UART */
-    esp_zb_platform_config_t config = {
-        .radio_config = ESP_ZB_DEFAULT_RADIO_CONFIG(),
-        .host_config  = ESP_ZB_DEFAULT_HOST_CONFIG(),
-    };
-    ESP_ERROR_CHECK(esp_zb_platform_configure(&config));
-
-    /* Coordinator role */
     esp_zb_cfg_t zb_nwk_cfg = ESP_ZB_ZC_CONFIG();
     esp_zb_init(&zb_nwk_cfg);
 
     /* Register a basic endpoint for gateway telemetry */
     esp_zb_ep_list_t *ep_list = esp_zb_ep_list_create();
-    esp_zb_cluster_list_t *cluster_list = esp_zb_cluster_list_create();
+    esp_zb_cluster_list_t *cluster_list = esp_zb_zcl_cluster_list_create();
     esp_zb_basic_cluster_cfg_t basic_cfg = {
         .zcl_version = ESP_ZB_ZCL_BASIC_ZCL_VERSION_DEFAULT_VALUE,
-        .power_source = ESP_ZB_ZCL_BASIC_POWER_SOURCE_MAINS_SINGLE_PHASE_0,
+        .power_source = ESP_ZB_ZCL_BASIC_POWER_SOURCE_DEFAULT_VALUE,
     };
     esp_zb_attribute_list_t *basic = esp_zb_basic_cluster_create(&basic_cfg);
     esp_zb_cluster_list_add_basic_cluster(cluster_list, basic,
         ESP_ZB_ZCL_CLUSTER_SERVER_ROLE);
-    esp_zb_endpoint_config_t ep_cfg = {
-        .endpoint = AGRINET_EP_GATEWAY_TELE,
-        .app_profile_id = ESP_ZB_AF_HA_PROFILE_ID,
-        .app_device_id = ESP_ZB_HA_REMOTE_CONTROL_DEVICE_ID,
-        .app_device_version = 0,
-    };
-    esp_zb_ep_list_add_ep(ep_list, cluster_list, ep_cfg);
+    esp_zb_ep_list_add_ep(ep_list, cluster_list,
+        AGRINET_EP_GATEWAY_TELE, ESP_ZB_AF_HA_PROFILE_ID, ESP_ZB_HA_REMOTE_CONTROL_DEVICE_ID);
     ESP_ERROR_CHECK(esp_zb_device_register(ep_list));
 
-    /* Register action handler for incoming ZCL reports */
     esp_zb_core_action_handler_register(zb_action_handler);
-    esp_zb_device_add_custom_cb(ESP_ZB_CORE_DEVICE_REPORT_ATTR_CB_ID, NULL);
-    esp_zb_device_add_custom_cb(ESP_ZB_CORE_DEVICE_JOIN_CB_ID, NULL);
-    esp_zb_device_add_custom_cb(ESP_ZB_CORE_DEVICE_LEAVE_CB_ID, NULL);
+    esp_zb_set_primary_network_channel_set(ESP_ZB_PRIMARY_CHANNEL_MASK);
 
     ESP_ERROR_CHECK(esp_zb_start(false));
     esp_zb_main_loop_iteration();
-    return ESP_OK;
 }
 
 /* --------------------------------------------------------------------- */
@@ -302,12 +289,17 @@ esp_err_t app_gateway_start(void)
     s_rt.state = AGRINET_GW_STATE_MQTT_CONNECTING;
     app_mqtt_start();
 
-    /* Zigbee coordinator */
-    s_rt.state = AGRINET_GW_STATE_ZB_FORMING;
-    start_zigbee_coordinator();
+    /* Zigbee platform config */
+    esp_zb_platform_config_t config = {
+        .radio_config = ESP_ZB_DEFAULT_RADIO_CONFIG(),
+        .host_config  = ESP_ZB_DEFAULT_HOST_CONFIG(),
+    };
+    ESP_ERROR_CHECK(esp_zb_platform_config(&config));
 
-    /* The Zigbee main loop is blocking - if we get here, it exited */
-    AG_LOGW(TAG, "zigbee main loop exited");
+    /* Start Zigbee task */
+    s_rt.state = AGRINET_GW_STATE_ZB_FORMING;
+    xTaskCreate(esp_zb_task, "Zigbee_main", 4096, NULL, 5, NULL);
+
     return ESP_OK;
 }
 
@@ -440,12 +432,7 @@ esp_err_t app_gateway_send_actuator_cmd(const char *node_id,
         endpoint = AGRINET_EP_ACTUATOR_WINDOW; actuator = "window";
     }
 
-    /* Send ZCL On/Off command to the actuator endpoint */
-    bool on = (changed_mask & (AGRINET_ACT_CHANGE_PUMP   |
-                               AGRINET_ACT_CHANGE_FAN    |
-                               AGRINET_ACT_CHANGE_LIGHT  |
-                               AGRINET_ACT_CHANGE_HEATER |
-                               AGRINET_ACT_CHANGE_WINDOW)) != 0;
+    /* Determine on/off state */
     bool act_on = false;
     if (changed_mask & AGRINET_ACT_CHANGE_PUMP)    act_on = (state->pump == AGRINET_ACT_ON);
     if (changed_mask & AGRINET_ACT_CHANGE_FAN)     act_on = (state->fan == AGRINET_ACT_ON);
@@ -453,14 +440,14 @@ esp_err_t app_gateway_send_actuator_cmd(const char *node_id,
     if (changed_mask & AGRINET_ACT_CHANGE_HEATER)  act_on = (state->heater == AGRINET_ACT_ON);
     if (changed_mask & AGRINET_ACT_CHANGE_WINDOW)  act_on = (state->window == AGRINET_ACT_ON);
 
+    /* Send ZCL On/Off command to the actuator endpoint */
     esp_zb_zcl_on_off_cmd_t cmd = {
         .address_mode = ESP_ZB_APS_ADDR_MODE_16_ENDP_PRESENT,
         .zcl_basic_cmd.src_endpoint = AGRINET_EP_GATEWAY_TELE,
         .zcl_basic_cmd.dst_endpoint = endpoint,
         .zcl_basic_cmd.dst_addr_u.addr_short = node->short_addr,
-        .command_id = act_on ? ESP_ZB_ZCL_CMD_ON_OFF_ON_ID
-                              : ESP_ZB_ZCL_CMD_ON_OFF_OFF_ID,
-        .disable_default_response = false,
+        .cmd_id = act_on ? ESP_ZB_ZCL_CMD_ON_OFF_ON_ID
+                         : ESP_ZB_ZCL_CMD_ON_OFF_OFF_ID,
     };
     esp_zb_zcl_on_off_cmd_req(&cmd);
     AG_LOGI(TAG, "sent ZCL %s to node %s endpoint %d (%s)",
@@ -477,18 +464,15 @@ esp_err_t app_gateway_send_actuator_cmd(const char *node_id,
         if (state->grow_light_level > 0) { level = state->grow_light_level; has_level = true; }
     }
     if (has_level) {
-        esp_zb_zcl_move_to_level_cmd_t lvl = {
+        esp_zb_zcl_level_move_to_level_cmd_t lvl = {
             .address_mode = ESP_ZB_APS_ADDR_MODE_16_ENDP_PRESENT,
             .zcl_basic_cmd.src_endpoint = AGRINET_EP_GATEWAY_TELE,
             .zcl_basic_cmd.dst_endpoint = endpoint,
             .zcl_basic_cmd.dst_addr_u.addr_short = node->short_addr,
             .level = level,
             .transition_time = 0,
-            .mask = ESP_ZB_ZCL_ATTR_LEVEL_CONTROL_LEVEL_ID,
-            .direction = ESP_ZB_ZCL_LEVEL_CONTROL_MOVE_DIRECTION_UP,
-            .disable_default_response = false,
         };
-        esp_zb_zcl_move_to_level_cmd_req(&lvl);
+        esp_zb_zcl_level_move_to_level_cmd_req(&lvl);
         AG_LOGI(TAG, "sent ZCL level=%u to %s ep %d", level, node_id, endpoint);
     }
 
