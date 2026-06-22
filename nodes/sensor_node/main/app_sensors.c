@@ -350,11 +350,11 @@ static int8_t read_battery_pct(void)
 {
     int raw = 0;
     if (adc_oneshot_read(s_adc_handle, AGRINET_BATT_ADC_CHAN, &raw) != ESP_OK) return -1;
-    uint32_t mv = 0;
+    int mv = 0;
     if (s_adc_calibrated) {
         adc_cali_raw_to_voltage(s_adc_cali_handle, raw, &mv);
     } else {
-        mv = (uint32_t)raw * 1100 / 4095;
+        mv = raw * 1100 / 4095;
     }
     /* 1:2 voltage divider - 2x to get actual battery voltage */
     mv *= 2;

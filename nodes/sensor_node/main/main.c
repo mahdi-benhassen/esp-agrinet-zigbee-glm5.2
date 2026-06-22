@@ -128,8 +128,8 @@ static void esp_zb_task(void *pvParameters)
     /* Temperature measurement cluster */
     esp_zb_temperature_meas_cluster_cfg_t temp_cfg = {
         .measured_value = 0,
-        .min_measured_value = -4000,
-        .max_measured_value = 12000,
+        .min_value = -4000,
+        .max_value = 12000,
     };
     esp_zb_attribute_list_t *temp_meas = esp_zb_temperature_meas_cluster_create(&temp_cfg);
     esp_zb_cluster_list_add_temperature_meas_cluster(cluster_list, temp_meas, ESP_ZB_ZCL_CLUSTER_SERVER_ROLE);
@@ -137,8 +137,8 @@ static void esp_zb_task(void *pvParameters)
     /* Humidity measurement cluster */
     esp_zb_humidity_meas_cluster_cfg_t hum_cfg = {
         .measured_value = 0,
-        .min_measured_value = 0,
-        .max_measured_value = 10000,
+        .min_value = 0,
+        .max_value = 10000,
     };
     esp_zb_attribute_list_t *hum_meas = esp_zb_humidity_meas_cluster_create(&hum_cfg);
     esp_zb_cluster_list_add_humidity_meas_cluster(cluster_list, hum_meas, ESP_ZB_ZCL_CLUSTER_SERVER_ROLE);
