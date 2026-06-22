@@ -8,10 +8,8 @@
  */
 #include "agrinet_clusters.h"
 #include "agrinet_log.h"
-#include "esp_zigbee.h"
-#include "esp_zigbee_cluster.h"
-#include "esp_zigbee_attribute.h"
-#include "esp_zigbee_zcl_command.h"
+#include "esp_zigbee_core.h"
+#include "ha/esp_zigbee_ha_standard.h"
 #include <string.h>
 
 /* Attribute default values used on cluster creation. */
