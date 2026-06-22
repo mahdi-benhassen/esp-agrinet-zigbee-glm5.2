@@ -6,4 +6,6 @@ idf_component_register(
         "include"
     PRIV_REQUIRES
         espressif__esp-zigbee-lib
+        espressif__esp-zboss-lib
+        driver
 )
