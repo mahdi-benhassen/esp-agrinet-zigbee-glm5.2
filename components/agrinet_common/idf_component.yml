@@ -1,0 +1,8 @@
+## IDF Component Manifest for agrinet_common
+## Declares the zigbee library dependencies so that the esp_zigbee headers
+## are available to this component's public includes (agrinet_clusters.h).
+dependencies:
+  espressif/esp-zigbee-lib: "1.0.9"
+  espressif/esp-zboss-lib: "1.0.9"
+  idf:
+    version: ">=5.2.0"

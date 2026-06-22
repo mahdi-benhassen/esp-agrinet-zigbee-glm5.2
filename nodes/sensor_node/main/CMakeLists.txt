@@ -6,7 +6,6 @@ idf_component_register(
         "."
     REQUIRES
         agrinet_common
-        esp_zigbee
         driver_i2c
         driver_adc
         esp_adc_cal
