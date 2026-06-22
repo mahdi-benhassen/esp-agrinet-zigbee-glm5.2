@@ -8,6 +8,8 @@ idf_component_register(
         "."
     REQUIRES
         agrinet_common
+        espressif__esp-zigbee-lib
+        espressif__esp-zboss-lib
         esp_wifi
         esp_event
         esp_netif

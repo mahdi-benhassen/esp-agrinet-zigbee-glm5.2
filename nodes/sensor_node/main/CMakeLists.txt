@@ -6,6 +6,8 @@ idf_component_register(
         "."
     REQUIRES
         agrinet_common
+        espressif__esp-zigbee-lib
+        espressif__esp-zboss-lib
         driver
         esp_adc
         nvs_flash
