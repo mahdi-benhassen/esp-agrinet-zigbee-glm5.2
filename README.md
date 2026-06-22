@@ -29,19 +29,23 @@
 ## Repository layout
 
 ```
-esp-agrinet-zigbee/
-├── gateway/                    # ESP32-S3 host firmware (Zigbee coordinator + WiFi + MQTT)
-│   ├── main/
-│   │   ├── main.c
-│   │   ├── app_gateway.{h,c}
-│   │   ├── app_wifi.{h,c}
-│   │   ├── app_mqtt.{h,c}
-│   │   └── idf_component.yml
-│   ├── partitions.csv
-│   ├── sdkconfig.defaults
-│   └── CMakeLists.txt
-├── nodes/
-│   ├── sensor_node/            # ESP32-H2 sensor end-device
+esp-agrinet-zigbee-glm5.2/
+├── gateway/                        # Gateway (ESP32-S3 host + ESP32-H2 RCP)
+│   ├── host/                       # ESP32-S3 host firmware (WiFi + MQTT + Zigbee coordinator)
+│   │   ├── main/
+│   │   │   ├── main.c
+│   │   │   ├── app_gateway.{h,c}
+│   │   │   ├── app_wifi.{h,c}
+│   │   │   ├── app_mqtt.{h,c}
+│   │   │   └── idf_component.yml
+│   │   ├── partitions.csv
+│   │   ├── sdkconfig.defaults
+│   │   └── CMakeLists.txt
+│   └── rcp/                        # ESP32-H2 RCP config (built from ESP-IDF ot_rcp example)
+│       ├── sdkconfig.defaults
+│       └── README.md
+├── nodes/                          # Sensor + actuator nodes
+│   ├── sensor_node/                # ESP32-H2 sensor end-device
 │   │   ├── main/
 │   │   │   ├── main.c
 │   │   │   ├── app_sensors.{h,c}
@@ -49,7 +53,7 @@ esp-agrinet-zigbee/
 │   │   ├── partitions.csv
 │   │   ├── sdkconfig.defaults
 │   │   └── CMakeLists.txt
-│   └── actuator_node/          # ESP32-H2 actuator router
+│   └── actuator_node/              # ESP32-H2 actuator router
 │       ├── main/
 │       │   ├── main.c
 │       │   ├── app_actuators.{h,c}
@@ -57,11 +61,8 @@ esp-agrinet-zigbee/
 │       ├── partitions.csv
 │       ├── sdkconfig.defaults
 │       └── CMakeLists.txt
-├── rcp/                        # ESP32-H2 radio-coprocessor config for the gateway
-│   ├── sdkconfig.defaults
-│   └── README.md
 ├── components/
-│   └── agrinet_common/         # Shared clusters, types, MQTT schema, log helpers
+│   └── agrinet_common/             # Shared clusters, types, MQTT schema, log helpers
 │       ├── include/
 │       │   ├── agrinet_types.h
 │       │   ├── agrinet_clusters.h
@@ -79,13 +80,13 @@ esp-agrinet-zigbee/
 │   ├── MQTT_API.md
 │   └── ZIGBEE_DATA_MODEL.md
 ├── scripts/
-│   ├── build_all.sh            # one-shot build for every firmware
-│   └── flash.py                # idf.py flash wrapper
-├── .github/workflows/build.yml # CI: build gateway / sensor / actuator / RCP
+│   ├── build_all.sh                # one-shot build for every firmware
+│   └── flash.py                    # idf.py flash wrapper
+├── .github/workflows/build.yml     # CI: build gateway / sensor / actuator / RCP
 ├── .clang-format
 ├── .gitignore
 ├── LICENSE
-└── README.md                   # this file
+└── README.md                       # this file
 ```
 
 ---
@@ -112,7 +113,10 @@ cd esp-agrinet-zigbee-glm5.2
 Each firmware goes to a different physical device. See [docs/FLASHING.md](docs/FLASHING.md) for the full procedure.
 
 ```bash
-# Flash the gateway (ESP32-S3) on /dev/ttyUSB0
+# Flash the gateway's RCP (ESP32-H2) on /dev/ttyUSB0
+python3 scripts/flash.py rcp /dev/ttyUSB0
+
+# Flash the gateway host (ESP32-S3) on /dev/ttyUSB0
 python3 scripts/flash.py gateway /dev/ttyUSB0
 
 # Flash the sensor node (ESP32-H2) on /dev/ttyUSB1
@@ -120,9 +124,6 @@ python3 scripts/flash.py sensor /dev/ttyUSB1
 
 # Flash the actuator node (ESP32-H2) on /dev/ttyUSB2
 python3 scripts/flash.py actuator /dev/ttyUSB2
-
-# Flash the gateway's RCP (ESP32-H2) on /dev/ttyUSB0
-python3 scripts/flash.py rcp /dev/ttyUSB0
 ```
 
 ---
@@ -172,7 +173,7 @@ For details, see:
 | Role | Target | Zigbee role | Notes |
 |------|--------|-------------|-------|
 | Gateway host | ESP32-S3 | Coordinator | WiFi + MQTT bridge |
-| Gateway RCP | ESP32-H2 | (radio only) | Talks to host over UART |
+| Gateway RCP | ESP32-H2 | (radio only) | Built from ESP-IDF ot_rcp, talks to host over UART |
 | Sensor node | ESP32-H2 | End device | Battery-powered, sleeps between reports |
 | Actuator node | ESP32-H2 | Router | Mains-powered, always-on mesh relay |
 
@@ -184,10 +185,10 @@ The repo includes a GitHub Actions workflow (`.github/workflows/build.yml`) that
 
 1. Lints all C source with `clang-format`
 2. Installs ESP-IDF v5.2.3
-3. Builds the gateway host (ESP32-S3)
-4. Builds the sensor node (ESP32-H2)
-5. Builds the actuator node (ESP32-H2)
-6. Clones `esp-zigbee-sdk` and builds the RCP firmware (ESP32-H2)
+3. Builds the gateway host (ESP32-S3) from `gateway/host/`
+4. Builds the sensor node (ESP32-H2) from `nodes/sensor_node/`
+5. Builds the actuator node (ESP32-H2) from `nodes/actuator_node/`
+6. Builds the RCP firmware (ESP32-H2) from ESP-IDF's `ot_rcp` example with the vendor hook appended from `gateway/rcp/`
 7. Uploads each firmware's `.bin`, bootloader and partition table as a build artifact
 
 ---

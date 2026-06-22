@@ -3,8 +3,7 @@
 # ESP-AgriNet Zigbee - Build-all helper
 #
 # Builds every firmware in this project. Requires a working ESP-IDF
-# environment (IDF_PATH set, idf.py on PATH). The script will skip a
-# firmware if its target has already been set.
+# environment (IDF_PATH set, idf.py on PATH).
 #
 # Usage:
 #   ./scripts/build_all.sh              # build everything
@@ -20,8 +19,8 @@ ROOT_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
 TARGET="${1:-all}"
 
 build_gateway() {
-    echo "==> Building gateway (ESP32-S3 host)"
-    cd "$ROOT_DIR/gateway"
+    echo "==> Building gateway host (ESP32-S3)"
+    cd "$ROOT_DIR/gateway/host"
     idf.py set-target esp32s3
     idf.py build
 }
@@ -42,25 +41,25 @@ build_actuator_node() {
 
 build_rcp() {
     echo "==> Building RCP (ESP32-H2 radio coprocessor)"
-    IDF_ZB_SDK_DIR="${IDF_PATH}/../esp-zigbee-sdk"
-    if [ ! -d "$IDF_ZB_SDK_DIR/examples/esp_zigbee_gw/rcp" ]; then
-        echo "    esp-zigbee-sdk not found at $IDF_ZB_SDK_DIR - skipping RCP build"
-        echo "    (clone https://github.com/espressif/esp-zigbee-sdk next to ESP-IDF)"
+    RCP_EXAMPLE="$IDF_PATH/examples/openthread/ot_rcp"
+    if [ ! -d "$RCP_EXAMPLE" ]; then
+        echo "    ot_rcp example not found at $RCP_EXAMPLE - skipping RCP build"
+        echo "    (make sure ESP-IDF is installed and IDF_PATH is set)"
         return 0
     fi
-    RCP_DIR="$IDF_ZB_SDK_DIR/examples/esp_zigbee_gw/rcp"
-    cp "$ROOT_DIR/rcp/sdkconfig.defaults" "$RCP_DIR/"
-    cd "$RCP_DIR"
+    # Append our vendor-hook config to the ot_rcp example's defaults
+    cat "$ROOT_DIR/gateway/rcp/sdkconfig.defaults" >> "$RCP_EXAMPLE/sdkconfig.defaults"
+    cd "$RCP_EXAMPLE"
     idf.py set-target esp32h2
     idf.py build
 }
 
 case "$TARGET" in
     all)
+        build_rcp
         build_gateway
         build_sensor_node
         build_actuator_node
-        build_rcp
         ;;
     gateway)  build_gateway ;;
     sensor)   build_sensor_node ;;

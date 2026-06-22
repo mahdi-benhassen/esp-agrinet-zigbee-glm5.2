@@ -20,21 +20,21 @@ jobs:
         with:
           submodules: recursive
 
-      - name: Build gateway
+      - name: Build gateway host
         uses: espressif/esp-idf-ci-action@v1
         with:
           esp_idf_version: v5.2.3
           target: esp32s3
-          path: gateway
+          path: gateway/host
 
       - name: Upload build artifacts
         uses: actions/upload-artifact@v4
         with:
           name: gateway-esp32s3-firmware
           path: |
-            gateway/build/esp_agrinet_gateway.bin
-            gateway/build/bootloader/bootloader.bin
-            gateway/build/partition_table/partition-table.bin
+            gateway/host/build/esp_agrinet_gateway.bin
+            gateway/host/build/bootloader/bootloader.bin
+            gateway/host/build/partition_table/partition-table.bin
           if-no-files-found: warn
 
   # ----------------------------------------------------------------------
@@ -97,7 +97,7 @@ jobs:
 
   # ----------------------------------------------------------------------
   # Build the ESP32-H2 RCP firmware (radio coprocessor for the gateway)
-  # Uses the ot_rcp example from ESP-IDF with OPENTHREAD_NCP_VENDOR_HOOK
+  # Uses ESP-IDF's ot_rcp example with OPENTHREAD_NCP_VENDOR_HOOK appended
   # ----------------------------------------------------------------------
   build-rcp:
     name: RCP (ESP32-H2 radio coprocessor)
@@ -111,23 +111,23 @@ jobs:
         with:
           esp_idf_version: v5.2.3
           target: esp32h2
-          path: rcp
+          path: gateway/rcp
           command: >-
-            cp sdkconfig.defaults /opt/esp/idf/examples/openthread/ot_rcp/sdkconfig.defaults
+            cat sdkconfig.defaults >> /opt/esp/idf/examples/openthread/ot_rcp/sdkconfig.defaults
             && cd /opt/esp/idf/examples/openthread/ot_rcp
             && idf.py set-target esp32h2
             && idf.py build
-            && mkdir -p /app/${{ github.repository }}/rcp/build
-            && cp build/esp_ot_rcp.bin build/bootloader/bootloader.bin build/partition_table/partition-table.bin /app/${{ github.repository }}/rcp/build/
+            && mkdir -p /app/${{ github.repository }}/gateway/rcp/build
+            && cp build/esp_ot_rcp.bin build/bootloader/bootloader.bin build/partition_table/partition-table.bin /app/${{ github.repository }}/gateway/rcp/build/
 
       - name: Upload build artifacts
         uses: actions/upload-artifact@v4
         with:
           name: rcp-esp32h2-firmware
           path: |
-            rcp/build/esp_ot_rcp.bin
-            rcp/build/bootloader.bin
-            rcp/build/partition-table.bin
+            gateway/rcp/build/esp_ot_rcp.bin
+            gateway/rcp/build/bootloader.bin
+            gateway/rcp/build/partition-table.bin
           if-no-files-found: warn
 
   # ----------------------------------------------------------------------

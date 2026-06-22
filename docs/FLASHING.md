@@ -33,11 +33,26 @@ For the rest of this document, replace `/dev/ttyUSB0` with the port you identifi
 
 ---
 
-## 1. Flash the gateway host (ESP32-S3)
+## 1. Flash the gateway RCP (ESP32-H2)
+
+Flash the RCP **first** — the gateway host expects a working RCP on the UART link at boot.
 
 ```bash
 . $IDF_PATH/export.sh
-cd gateway
+cat gateway/rcp/sdkconfig.defaults >> $IDF_PATH/examples/openthread/ot_rcp/sdkconfig.defaults
+cd $IDF_PATH/examples/openthread/ot_rcp
+idf.py -p /dev/ttyUSB0 flash
+```
+
+> The RCP firmware goes to the ESP32-H2 chip on the gateway board.
+
+---
+
+## 2. Flash the gateway host (ESP32-S3)
+
+```bash
+. $IDF_PATH/export.sh
+cd gateway/host
 idf.py -p /dev/ttyUSB0 flash monitor
 ```
 
@@ -59,20 +74,6 @@ After the first boot, the gateway has no WiFi credentials. It will start a capti
 > # At the gateway prompt (not implemented here), or use:
 > esptool.py --port /dev/ttyUSB0 write_flash 0x9000 nvs_data.bin
 > ```
-
----
-
-## 2. Flash the gateway RCP (ESP32-H2)
-
-The RCP firmware is built from `esp-zigbee-sdk`. Flash it before flashing the host, so the host can talk to a working RCP at boot.
-
-```bash
-. $IDF_PATH/export.sh
-cd $IDF_PATH/../esp-zigbee-sdk/examples/esp_zigbee_gw/rcp
-idf.py -p /dev/ttyUSB0 flash
-```
-
-> Flash the RCP **and** the host on the same physical ESP32-H2 + ESP32-S3 combo. The RCP firmware goes to the ESP32-H2; the host firmware goes to the ESP32-S3.
 
 ---
 
@@ -114,10 +115,10 @@ idf.py -p /dev/ttyUSB0 flash
 The repo includes `scripts/flash.py` as a thin wrapper around `idf.py flash monitor`:
 
 ```bash
+python3 scripts/flash.py rcp       /dev/ttyUSB0
 python3 scripts/flash.py gateway   /dev/ttyUSB0
 python3 scripts/flash.py sensor    /dev/ttyUSB1
 python3 scripts/flash.py actuator  /dev/ttyUSB2
-python3 scripts/flash.py rcp       /dev/ttyUSB0
 ```
 
 ---

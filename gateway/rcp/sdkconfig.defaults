@@ -1,0 +1,11 @@
+# ESP-AgriNet RCP additional configuration
+#
+# This file is APPENDED to ESP-IDF's ot_rcp example sdkconfig.defaults.
+# Do not overwrite the example's defaults — the ot_rcp example needs its
+# own settings (size optimisation, openthread enable, etc.) to compile.
+#
+# The only setting we add is the Zigbee vendor hook, which extends the
+# OpenThread RCP with the Spinel properties used by the ESP Zigbee gateway
+# host firmware to manage a Zigbee network through the H2 radio.
+
+CONFIG_OPENTHREAD_NCP_VENDOR_HOOK=y

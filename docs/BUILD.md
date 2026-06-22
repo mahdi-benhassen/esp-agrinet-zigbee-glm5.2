@@ -21,16 +21,31 @@ idf.py --version
 
 ---
 
-## 2. Clone esp-zigbee-sdk
+## 2. Repository layout
 
-The Zigbee SDK is required for all four firmware targets. Clone it as a sibling of ESP-IDF:
-
-```bash
-cd $IDF_PATH/..
-git clone --branch v0.5.0 https://github.com/espressif/esp-zigbee-sdk.git
+```
+esp-agrinet-zigbee-glm5.2/
+├── gateway/
+│   ├── host/              # ESP32-S3 gateway host firmware (WiFi + MQTT + Zigbee coordinator)
+│   │   ├── main/
+│   │   ├── partitions.csv
+│   │   ├── sdkconfig.defaults
+│   │   └── CMakeLists.txt
+│   └── rcp/               # ESP32-H2 RCP config (built from ESP-IDF ot_rcp example)
+│       ├── sdkconfig.defaults
+│       └── README.md
+├── nodes/
+│   ├── sensor_node/       # ESP32-H2 sensor end-device
+│   └── actuator_node/     # ESP32-H2 actuator router
+├── components/
+│   └── agrinet_common/    # shared clusters, types, MQTT schema
+├── docs/
+└── scripts/
 ```
 
-The `idf_component.yml` files in this project will pull the Zigbee libraries (`esp-zigbee-lib` and `esp-zboss-lib`) automatically via the IDF Component Manager. The local clone is only needed to build the **RCP firmware** (which lives in `esp-zigbee-sdk/examples/esp_zigbee_gw/rcp/`).
+The `idf_component.yml` files in each firmware's `main/` directory pull the
+Zigbee libraries (`esp-zigbee-lib` and `esp-zboss-lib`) automatically via
+the IDF Component Manager.
 
 ---
 
@@ -45,10 +60,10 @@ The simplest way is to use the included helper script:
 
 This builds, in order:
 
-1. Gateway host firmware (ESP32-S3)
-2. Sensor node firmware (ESP32-H2)
-3. Actuator node firmware (ESP32-H2)
-4. Gateway RCP firmware (ESP32-H2)
+1. Gateway RCP firmware (ESP32-H2) — from ESP-IDF `ot_rcp` example
+2. Gateway host firmware (ESP32-S3)
+3. Sensor node firmware (ESP32-H2)
+4. Actuator node firmware (ESP32-H2)
 
 Each firmware is built in its own directory and the resulting `.bin` files appear under `build/`.
 
@@ -56,15 +71,15 @@ Each firmware is built in its own directory and the resulting `.bin` files appea
 
 ## 4. Build a single firmware
 
-### 4.1 Gateway (ESP32-S3)
+### 4.1 Gateway host (ESP32-S3)
 
 ```bash
-cd gateway
+cd gateway/host
 idf.py set-target esp32s3
 idf.py build
 ```
 
-Output: `gateway/build/esp_agrinet_gateway.bin`
+Output: `gateway/host/build/esp_agrinet_gateway.bin`
 
 ### 4.2 Sensor node (ESP32-H2)
 
@@ -88,15 +103,21 @@ Output: `nodes/actuator_node/build/esp_agrinet_actuator_node.bin`
 
 ### 4.4 Gateway RCP (ESP32-H2)
 
+The RCP firmware is built from ESP-IDF's `examples/openthread/ot_rcp` with
+the `OPENTHREAD_NCP_VENDOR_HOOK` option appended from `gateway/rcp/sdkconfig.defaults`.
+
 ```bash
-RCP_DIR=$IDF_PATH/../esp-zigbee-sdk/examples/esp_zigbee_gw/rcp
-cp rcp/sdkconfig.defaults "$RCP_DIR/"
+RCP_DIR=$IDF_PATH/examples/openthread/ot_rcp
+cat gateway/rcp/sdkconfig.defaults >> "$RCP_DIR/sdkconfig.defaults"
 cd "$RCP_DIR"
 idf.py set-target esp32h2
 idf.py build
 ```
 
-Output: `$RCP_DIR/build/esp_zigbee_rcp.bin` (or similar)
+Output: `$RCP_DIR/build/esp_ot_rcp.bin`
+
+> **Important**: append, don't overwrite — the ot_rcp example needs its own
+> `sdkconfig.defaults` settings to compile.
 
 ---
 
@@ -153,13 +174,18 @@ rm -rf build sdkconfig
 idf.py set-target esp32s3   # or esp32h2
 ```
 
-### RCP build fails
+### RCP build fails with `esp_openthread.h: No such file or directory`
 
-The RCP firmware lives in the external `esp-zigbee-sdk` repo. Make sure you've cloned the matching version (v0.5.0):
+You overwrote the ot_rcp example's `sdkconfig.defaults` instead of appending. Restore the example and append only the vendor hook:
 
 ```bash
-cd $IDF_PATH/../esp-zigbee-sdk
-git checkout v0.5.0
+cd $IDF_PATH
+git checkout -- examples/openthread/ot_rcp/sdkconfig.defaults
+cat gateway/rcp/sdkconfig.defaults >> examples/openthread/ot_rcp/sdkconfig.defaults
+cd examples/openthread/ot_rcp
+rm -rf build sdkconfig
+idf.py set-target esp32h2
+idf.py build
 ```
 
 ### Build runs out of memory on CI
