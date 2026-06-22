@@ -5,31 +5,31 @@
  * Defines standard Zigbee clusters used by the agriculture data model plus
  * a manufacturer-specific cluster for soil moisture (no Zigbee standard
  * exists yet) and a custom agrinet configuration cluster.
+ *
+ * This header uses raw numeric cluster IDs so it does not depend on the
+ * esp-zigbee-lib headers. The .c file includes the zigbee headers directly.
  */
 #pragma once
 
 #include "agrinet_types.h"
-#include "esp_zigbee.h"
-#include "esp_zigbee_cluster.h"
-#include "esp_zigbee_attribute.h"
+#include "esp_err.h"
 
 #ifdef __cplusplus
 extern "C" {
 #endif
 
 /* ------------------- Standard Zigbee Cluster IDs ----------------------- */
-/* (Already defined in esp_zigbee_zcl_cluster.h - re-listed here only as    */
-/*  documentation for the data model used by this project.)                */
-#define AGRINET_CLUSTER_BASIC          ESP_ZB_ZCL_CLUSTER_ID_BASIC
-#define AGRINET_CLUSTER_IDENTIFY       ESP_ZB_ZCL_CLUSTER_ID_IDENTIFY
-#define AGRINET_CLUSTER_POWER_CFG      ESP_ZB_ZCL_CLUSTER_ID_POWER_CONFIG
-#define AGRINET_CLUSTER_ON_OFF         ESP_ZB_ZCL_CLUSTER_ID_ON_OFF
-#define AGRINET_CLUSTER_LEVEL          ESP_ZB_ZCL_CLUSTER_ID_LEVEL_CONTROL
-#define AGRINET_CLUSTER_TEMP_MEAS      ESP_ZB_ZCL_CLUSTER_ID_TEMP_MEASUREMENT
-#define AGRINET_CLUSTER_HUMIDITY_MEAS  ESP_ZB_ZCL_CLUSTER_ID_REL_HUMIDITY_MEASUREMENT
-#define AGRINET_CLUSTER_PRESSURE_MEAS  ESP_ZB_ZCL_CLUSTER_ID_PRESSURE_MEASUREMENT
-#define AGRINET_CLUSTER_ILLUM_MEAS     ESP_ZB_ZCL_CLUSTER_ID_ILLUMINANCE_MEASUREMENT
-#define AGRINET_CLUSTER_DIAGNOSTICS    ESP_ZB_ZCL_CLUSTER_ID_DIAGNOSTICS
+/* Numeric values from the ZCL specification (same as ESP_ZB_ZCL_CLUSTER_ID_*) */
+#define AGRINET_CLUSTER_BASIC          0x0000
+#define AGRINET_CLUSTER_IDENTIFY       0x0003
+#define AGRINET_CLUSTER_POWER_CFG      0x0001
+#define AGRINET_CLUSTER_ON_OFF         0x0006
+#define AGRINET_CLUSTER_LEVEL          0x0008
+#define AGRINET_CLUSTER_TEMP_MEAS      0x0402
+#define AGRINET_CLUSTER_HUMIDITY_MEAS  0x0405
+#define AGRINET_CLUSTER_PRESSURE_MEAS  0x0403
+#define AGRINET_CLUSTER_ILLUM_MEAS     0x0400
+#define AGRINET_CLUSTER_DIAGNOSTICS    0x0B05
 
 /* ------------------ Manufacturer-specific cluster IDs ------------------ */
 /* Range 0xFC00..0xFFFF is reserved for manufacturer-specific clusters.    */
