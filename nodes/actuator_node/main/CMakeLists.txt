@@ -6,10 +6,6 @@ idf_component_register(
         "."
     REQUIRES
         agrinet_common
-        driver_gpio
-        driver_ledc
-        esp_timer
+        driver
         nvs_flash
-        esp_log
-        esp_hw_support
 )

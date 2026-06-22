@@ -6,11 +6,7 @@ idf_component_register(
         "."
     REQUIRES
         agrinet_common
-        driver_i2c
-        driver_adc
-        esp_adc_cal
-        esp_timer
+        driver
+        esp_adc
         nvs_flash
-        esp_log
-        esp_hw_support
 )

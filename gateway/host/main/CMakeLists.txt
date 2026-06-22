@@ -11,11 +11,6 @@ idf_component_register(
         esp_wifi
         esp_event
         esp_netif
-        esp_hw_support
         nvs_flash
         mqtt
-        esp_timer
-        esp_log
-        esp_system
-        driver_uart
 )
