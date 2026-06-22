@@ -219,7 +219,7 @@ static esp_err_t zb_action_handler(esp_zb_core_action_callback_id_t callback_id,
         const esp_zb_zcl_report_attr_message_t *rpt =
             (const esp_zb_zcl_report_attr_message_t *)message;
         AG_LOGD(TAG, "attr report ep=%d cluster=0x%04x",
-                rpt->info.dst_endpoint, rpt->info.cluster);
+                rpt->zcl_basic_cmd.src_endpoint, rpt->cluster);
         break;
     }
     default:
@@ -464,7 +464,7 @@ esp_err_t app_gateway_send_actuator_cmd(const char *node_id,
         if (state->grow_light_level > 0) { level = state->grow_light_level; has_level = true; }
     }
     if (has_level) {
-        esp_zb_zcl_level_move_to_level_cmd_t lvl = {
+        esp_zb_zcl_move_to_level_cmd_t lvl = {
             .address_mode = ESP_ZB_APS_ADDR_MODE_16_ENDP_PRESENT,
             .zcl_basic_cmd.src_endpoint = AGRINET_EP_GATEWAY_TELE,
             .zcl_basic_cmd.dst_endpoint = endpoint,
