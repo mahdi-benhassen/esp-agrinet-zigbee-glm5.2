@@ -11,8 +11,9 @@
 #include "agrinet_types.h"
 
 #include "driver/i2c.h"
-#include "driver/adc.h"
-#include "esp_adc_cal.h"
+#include "esp_adc/adc_oneshot.h"
+#include "esp_adc/adc_cali.h"
+#include "esp_adc/adc_cali_scheme.h"
 #include "esp_timer.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
@@ -270,19 +271,61 @@ static esp_err_t scd41_read(uint16_t *co2_ppm, int16_t *temp_cdeg, uint16_t *hum
 /* --------------------------------------------------------------------- */
 /* Soil moisture (analog) + Battery                                     */
 /* --------------------------------------------------------------------- */
-static esp_adc_cal_characteristics_t s_adc_chars;
+static adc_oneshot_unit_handle_t s_adc_handle = NULL;
+static adc_cali_handle_t s_adc_cali_handle = NULL;
 static bool s_adc_calibrated = false;
+
+static bool adc_calibration_init(adc_unit_t unit, adc_channel_t chan, adc_atten_t atten, adc_cali_handle_t *out_handle)
+{
+    adc_cali_handle_t handle = NULL;
+    esp_err_t ret = ESP_FAIL;
+
+#if ADC_CALI_SCHEME_CURVE_FITTING_SUPPORTED
+    adc_cali_curve_fitting_config_t cali_config = {
+        .unit_id = unit,
+        .chan = chan,
+        .atten = atten,
+        .bitwidth = ADC_BITWIDTH_DEFAULT,
+    };
+    ret = adc_cali_create_scheme_curve_fitting(&cali_config, &handle);
+    if (ret == ESP_OK) {
+        *out_handle = handle;
+        return true;
+    }
+#endif
+
+#if ADC_CALI_SCHEME_LINE_FITTING_SUPPORTED
+    adc_cali_line_fitting_config_t cali_config = {
+        .unit_id = unit,
+        .atten = atten,
+        .bitwidth = ADC_BITWIDTH_DEFAULT,
+    };
+    ret = adc_cali_create_scheme_line_fitting(&cali_config, &handle);
+    if (ret == ESP_OK) {
+        *out_handle = handle;
+        return true;
+    }
+#endif
+
+    return false;
+}
 
 static esp_err_t adc_setup(void)
 {
-    esp_err_t r1 = adc1_config_width(ADC_WIDTH_BIT_12);
-    esp_err_t r2 = adc1_config_channel_atten(AGRINET_SOIL_ADC_CHAN, ADC_ATTEN_DB_11);
-    esp_err_t r3 = adc1_config_channel_atten(AGRINET_BATT_ADC_CHAN, ADC_ATTEN_DB_11);
-    if (r1 != ESP_OK || r2 != ESP_OK || r3 != ESP_OK) return ESP_FAIL;
-    esp_adc_cal_value_t cal = esp_adc_cal_characterize(AGRINET_SOIL_ADC_UNIT,
-        ADC_ATTEN_DB_11, ADC_WIDTH_BIT_12, 1100, &s_adc_chars);
-    s_adc_calibrated = (cal != ESP_ADC_CAL_VAL_NOT_SUPPORTED);
-    AG_LOGI(TAG, "ADC setup: calibrated=%d (mode %d)", s_adc_calibrated, cal);
+    adc_oneshot_unit_init_cfg_t init_cfg = {
+        .unit_id = AGRINET_SOIL_ADC_UNIT,
+    };
+    ESP_ERROR_CHECK(adc_oneshot_new_unit(&init_cfg, &s_adc_handle));
+
+    adc_oneshot_chan_cfg_t chan_cfg = {
+        .atten = ADC_ATTEN_DB_12,
+        .bitwidth = ADC_BITWIDTH_12,
+    };
+    ESP_ERROR_CHECK(adc_oneshot_config_channel(s_adc_handle, AGRINET_SOIL_ADC_CHAN, &chan_cfg));
+    ESP_ERROR_CHECK(adc_oneshot_config_channel(s_adc_handle, AGRINET_BATT_ADC_CHAN, &chan_cfg));
+
+    s_adc_calibrated = adc_calibration_init(AGRINET_SOIL_ADC_UNIT, AGRINET_SOIL_ADC_CHAN, ADC_ATTEN_DB_12, &s_adc_cali_handle);
+    AG_LOGI(TAG, "ADC setup: calibrated=%d", s_adc_calibrated);
     return ESP_OK;
 }
 
@@ -292,8 +335,8 @@ static esp_err_t adc_setup(void)
 
 static int16_t read_soil_moisture_centi(void)
 {
-    int raw = adc1_get_raw(AGRINET_SOIL_ADC_CHAN);
-    if (raw < 0) return 0;
+    int raw = 0;
+    if (adc_oneshot_read(s_adc_handle, AGRINET_SOIL_ADC_CHAN, &raw) != ESP_OK) return 0;
     /* Linear map: dry -> 0%, wet -> 100% */
     int pct_x100;
     if (raw >= SOIL_MOISTURE_DRY_RAW) pct_x100 = 0;
@@ -305,9 +348,14 @@ static int16_t read_soil_moisture_centi(void)
 
 static int8_t read_battery_pct(void)
 {
-    int raw = adc1_get_raw(AGRINET_BATT_ADC_CHAN);
-    if (raw < 0) return -1;
-    uint32_t mv = esp_adc_cal_raw_to_voltage(raw, &s_adc_chars);
+    int raw = 0;
+    if (adc_oneshot_read(s_adc_handle, AGRINET_BATT_ADC_CHAN, &raw) != ESP_OK) return -1;
+    uint32_t mv = 0;
+    if (s_adc_calibrated) {
+        adc_cali_raw_to_voltage(s_adc_cali_handle, raw, &mv);
+    } else {
+        mv = (uint32_t)raw * 1100 / 4095;
+    }
     /* 1:2 voltage divider - 2x to get actual battery voltage */
     mv *= 2;
     /* Li-ion 18650: 4200mV full, 3000mV empty */
