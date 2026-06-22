@@ -32,7 +32,7 @@ static esp_err_t i2c_write(uint8_t addr, const uint8_t *data, size_t len)
     i2c_master_write_byte(cmd, (addr << 1) | I2C_MASTER_WRITE, true);
     i2c_master_write(cmd, (uint8_t *)data, len, true);
     i2c_master_stop(cmd);
-    esp_err_t ret = i2c_master_cmd_begin(AGRONET_I2C_NUM, cmd, pdMS_TO_TICKS(100));
+    esp_err_t ret = i2c_master_cmd_begin(AGRINET_I2C_NUM, cmd, pdMS_TO_TICKS(100));
     i2c_cmd_link_delete(cmd);
     return ret;
 }
@@ -48,7 +48,7 @@ static esp_err_t i2c_read_reg(uint8_t addr, uint8_t reg, uint8_t *buf, size_t le
     if (len > 1) i2c_master_read(cmd, buf, len - 1, I2C_MASTER_ACK);
     i2c_master_read_byte(cmd, buf + len - 1, I2C_MASTER_NACK);
     i2c_master_stop(cmd);
-    esp_err_t ret = i2c_master_cmd_begin(AGRONET_I2C_NUM, cmd, pdMS_TO_TICKS(200));
+    esp_err_t ret = i2c_master_cmd_begin(AGRINET_I2C_NUM, cmd, pdMS_TO_TICKS(200));
     i2c_cmd_link_delete(cmd);
     return ret;
 }
@@ -201,7 +201,7 @@ static esp_err_t bh1750_read(uint16_t *lux_out)
     i2c_master_read_byte(cmd, &buf[0], I2C_MASTER_ACK);
     i2c_master_read_byte(cmd, &buf[1], I2C_MASTER_NACK);
     i2c_master_stop(cmd);
-    esp_err_t ret = i2c_master_cmd_begin(AGRONET_I2C_NUM, cmd, pdMS_TO_TICKS(100));
+    esp_err_t ret = i2c_master_cmd_begin(AGRINET_I2C_NUM, cmd, pdMS_TO_TICKS(100));
     i2c_cmd_link_delete(cmd);
     if (ret != ESP_OK) return ret;
     uint16_t raw = (buf[0] << 8) | buf[1];
@@ -252,7 +252,7 @@ static esp_err_t scd41_read(uint16_t *co2_ppm, int16_t *temp_cdeg, uint16_t *hum
     for (int i = 0; i < 8; i++) i2c_master_read_byte(cmd, &buf[i], I2C_MASTER_ACK);
     i2c_master_read_byte(cmd, &buf[8], I2C_MASTER_NACK);
     i2c_master_stop(cmd);
-    esp_err_t ret = i2c_master_cmd_begin(AGRONET_I2C_NUM, cmd, pdMS_TO_TICKS(100));
+    esp_err_t ret = i2c_master_cmd_begin(AGRINET_I2C_NUM, cmd, pdMS_TO_TICKS(100));
     i2c_cmd_link_delete(cmd);
     if (ret != ESP_OK) return ret;
     if (crc8(&buf[0], 2) != buf[2] ||
@@ -276,10 +276,10 @@ static bool s_adc_calibrated = false;
 static esp_err_t adc_setup(void)
 {
     esp_err_t r1 = adc1_config_width(ADC_WIDTH_BIT_12);
-    esp_err_t r2 = adc1_config_channel_atten(AGRONET_SOIL_ADC_CHAN, ADC_ATTEN_DB_11);
-    esp_err_t r3 = adc1_config_channel_atten(AGRONET_BATT_ADC_CHAN, ADC_ATTEN_DB_11);
+    esp_err_t r2 = adc1_config_channel_atten(AGRINET_SOIL_ADC_CHAN, ADC_ATTEN_DB_11);
+    esp_err_t r3 = adc1_config_channel_atten(AGRINET_BATT_ADC_CHAN, ADC_ATTEN_DB_11);
     if (r1 != ESP_OK || r2 != ESP_OK || r3 != ESP_OK) return ESP_FAIL;
-    esp_adc_cal_value_t cal = esp_adc_cal_characterize(AGRONET_SOIL_ADC_UNIT,
+    esp_adc_cal_value_t cal = esp_adc_cal_characterize(AGRINET_SOIL_ADC_UNIT,
         ADC_ATTEN_DB_11, ADC_WIDTH_BIT_12, 1100, &s_adc_chars);
     s_adc_calibrated = (cal != ESP_ADC_CAL_VAL_NOT_SUPPORTED);
     AG_LOGI(TAG, "ADC setup: calibrated=%d (mode %d)", s_adc_calibrated, cal);
@@ -292,7 +292,7 @@ static esp_err_t adc_setup(void)
 
 static int16_t read_soil_moisture_centi(void)
 {
-    int raw = adc1_get_raw(AGRONET_SOIL_ADC_CHAN);
+    int raw = adc1_get_raw(AGRINET_SOIL_ADC_CHAN);
     if (raw < 0) return 0;
     /* Linear map: dry -> 0%, wet -> 100% */
     int pct_x100;
@@ -305,7 +305,7 @@ static int16_t read_soil_moisture_centi(void)
 
 static int8_t read_battery_pct(void)
 {
-    int raw = adc1_get_raw(AGRONET_BATT_ADC_CHAN);
+    int raw = adc1_get_raw(AGRINET_BATT_ADC_CHAN);
     if (raw < 0) return -1;
     uint32_t mv = esp_adc_cal_raw_to_voltage(raw, &s_adc_chars);
     /* 1:2 voltage divider - 2x to get actual battery voltage */
@@ -330,8 +330,8 @@ esp_err_t app_sensors_init(void)
         .scl_pullup_en = GPIO_PULLUP_ENABLE,
         .master.clk_speed = AGRINET_I2C_FREQ_HZ,
     };
-    ESP_ERROR_CHECK(i2c_param_config(AGRONET_I2C_NUM, &conf));
-    ESP_ERROR_CHECK(i2c_driver_install(AGRONET_I2C_NUM, conf.mode, 0, 0, 0));
+    ESP_ERROR_CHECK(i2c_param_config(AGRINET_I2C_NUM, &conf));
+    ESP_ERROR_CHECK(i2c_driver_install(AGRINET_I2C_NUM, conf.mode, 0, 0, 0));
 
     ESP_ERROR_CHECK(adc_setup());
 

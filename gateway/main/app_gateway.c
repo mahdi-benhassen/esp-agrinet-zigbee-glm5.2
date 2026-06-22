@@ -50,7 +50,7 @@ const agrinet_gw_runtime_t *app_gateway_get_runtime(void) { return &s_rt; }
 static esp_err_t load_config_nvs(void)
 {
     nvs_handle_t h;
-    if (nvs_open(AGINET_GW_NVS_NAMESPACE, NVS_READONLY, &h) != ESP_OK) {
+    if (nvs_open(AGRINET_GW_NVS_NAMESPACE, NVS_READONLY, &h) != ESP_OK) {
         AG_LOGW(TAG, "no saved config in NVS - using defaults");
         return ESP_ERR_NOT_FOUND;
     }
@@ -76,7 +76,7 @@ static esp_err_t load_config_nvs(void)
 esp_err_t app_gateway_save_config_nvs(void)
 {
     nvs_handle_t h;
-    if (nvs_open(AGINET_GW_NVS_NAMESPACE, NVS_READWRITE, &h) != ESP_OK) {
+    if (nvs_open(AGRINET_GW_NVS_NAMESPACE, NVS_READWRITE, &h) != ESP_OK) {
         return ESP_FAIL;
     }
     nvs_set_str(h, "site_id",   g_site_id);
@@ -341,7 +341,7 @@ esp_err_t app_gateway_publish_sensor(const char *node_id,
                                      const agrinet_sensor_snapshot_t *snap)
 {
     char topic[128];
-    char payload[AGRONET_GW_MQTT_PAYLOAD_MAX];
+    char payload[AGRINET_GW_MQTT_PAYLOAD_MAX];
     snprintf(topic, sizeof(topic), AGRINET_MQTT_TOPIC_NODE_SENSOR,
              g_site_id, node_id);
     int n = agrinet_mqtt_build_sensor_json(payload, sizeof(payload),
@@ -354,7 +354,7 @@ esp_err_t app_gateway_publish_actuator(const char *node_id,
                                        const agrinet_actuator_state_t *state)
 {
     char topic[128];
-    char payload[AGRONET_GW_MQTT_PAYLOAD_MAX];
+    char payload[AGRINET_GW_MQTT_PAYLOAD_MAX];
     snprintf(topic, sizeof(topic), AGRINET_MQTT_TOPIC_NODE_ACTUATOR,
              g_site_id, node_id);
     int n = agrinet_mqtt_build_actuator_json(payload, sizeof(payload),
@@ -411,7 +411,7 @@ esp_err_t app_gateway_send_actuator_cmd(const char *node_id,
     }
 
     /* Send ZCL On/Off command to the actuator endpoint */
-    bool on = (changed_mask & (AGINET_ACT_CHANGE_PUMP   |
+    bool on = (changed_mask & (AGRINET_ACT_CHANGE_PUMP   |
                                AGRINET_ACT_CHANGE_FAN    |
                                AGRINET_ACT_CHANGE_LIGHT  |
                                AGRINET_ACT_CHANGE_HEATER |

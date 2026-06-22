@@ -40,10 +40,10 @@ typedef enum {
 } agrinet_gw_state_t;
 
 typedef struct {
-    char site_id[AGINET_GW_SITE_ID_MAX_LEN];
-    char mqtt_uri[AGINET_GW_MQTT_URI_MAX_LEN];
-    char wifi_ssid[AGINET_GW_WIFI_SSID_MAX_LEN];
-    char wifi_pass[AGINET_GW_WIFI_PASS_MAX_LEN];
+    char site_id[AGRINET_GW_SITE_ID_MAX_LEN];
+    char mqtt_uri[AGRINET_GW_MQTT_URI_MAX_LEN];
+    char wifi_ssid[AGRINET_GW_WIFI_SSID_MAX_LEN];
+    char wifi_pass[AGRINET_GW_WIFI_PASS_MAX_LEN];
     uint16_t pan_id;
     uint8_t  channel;
     /* if true, gateway will start a captive portal for provisioning when
@@ -65,7 +65,7 @@ typedef struct {
     agrinet_gw_state_t state;
     agrinet_gw_config_t config;
     agrinet_network_info_t net;
-    agrinet_gw_node_entry_t nodes[AGINET_GW_MAX_NODES];
+    agrinet_gw_node_entry_t nodes[AGRINET_GW_MAX_NODES];
     uint16_t nodes_count;
     uint32_t boot_time_ms;
 } agrinet_gw_runtime_t;

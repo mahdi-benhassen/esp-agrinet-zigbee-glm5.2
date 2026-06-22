@@ -59,7 +59,7 @@ static void set_servo_pct(ledc_channel_t chan, uint8_t pct_open)
 {
     /* pct_open: 0 (closed) .. 100 (fully open) */
     uint32_t pulse_us = AGRINET_SERVO_PULSE_CLOSED_US +
-        (uint32_t)(AGRONET_SERVO_PULSE_OPEN_US - AGRINET_SERVO_PULSE_CLOSED_US) * pct_open / 100;
+        (uint32_t)(AGRINET_SERVO_PULSE_OPEN_US - AGRINET_SERVO_PULSE_CLOSED_US) * pct_open / 100;
     /* duty = pulse_us * max / (1e6 / freq_hz) */
     uint32_t max = (1 << AGRINET_LEDC_RES) - 1;
     uint32_t duty = (uint32_t)((uint64_t)pulse_us * AGRINET_SERVO_FREQ_HZ * max) / 1000000ULL;
@@ -81,19 +81,19 @@ esp_err_t app_actuators_init(void)
         .intr_type = GPIO_INTR_DISABLE,
     };
     ESP_ERROR_CHECK(gpio_config(&io));
-    gpio_set_level(AGRONET_HEATER_GPIO, 0);
+    gpio_set_level(AGRINET_HEATER_GPIO, 0);
 
     /* LEDC channels */
-    ESP_ERROR_CHECK(ledc_setup_channel(AGRONET_PUMP_LEDC_CHAN,   AGRINET_PUMP_GPIO,   AGRINET_LEDC_FREQ_HZ));
-    ESP_ERROR_CHECK(ledc_setup_channel(AGRONET_FAN_LEDC_CHAN,    AGRINET_FAN_GPIO,    AGRINET_LEDC_FREQ_HZ));
-    ESP_ERROR_CHECK(ledc_setup_channel(AGRONET_LIGHT_LEDC_CHAN,  AGRINET_LIGHT_GPIO,  AGRINET_LEDC_FREQ_HZ));
-    ESP_ERROR_CHECK(ledc_setup_channel(AGRONET_WINDOW_LEDC_CHAN, AGRINET_WINDOW_GPIO, AGRINET_SERVO_FREQ_HZ));
+    ESP_ERROR_CHECK(ledc_setup_channel(AGRINET_PUMP_LEDC_CHAN,   AGRINET_PUMP_GPIO,   AGRINET_LEDC_FREQ_HZ));
+    ESP_ERROR_CHECK(ledc_setup_channel(AGRINET_FAN_LEDC_CHAN,    AGRINET_FAN_GPIO,    AGRINET_LEDC_FREQ_HZ));
+    ESP_ERROR_CHECK(ledc_setup_channel(AGRINET_LIGHT_LEDC_CHAN,  AGRINET_LIGHT_GPIO,  AGRINET_LEDC_FREQ_HZ));
+    ESP_ERROR_CHECK(ledc_setup_channel(AGRINET_WINDOW_LEDC_CHAN, AGRINET_WINDOW_GPIO, AGRINET_SERVO_FREQ_HZ));
 
     /* Start with everything off / closed */
-    set_pwm_pct(AGRONET_PUMP_LEDC_CHAN, 0, false);
-    set_pwm_pct(AGRONET_FAN_LEDC_CHAN, 0, false);
-    set_pwm_pct(AGRONET_LIGHT_LEDC_CHAN, 0, false);
-    set_servo_pct(AGRONET_WINDOW_LEDC_CHAN, 0);
+    set_pwm_pct(AGRINET_PUMP_LEDC_CHAN, 0, false);
+    set_pwm_pct(AGRINET_FAN_LEDC_CHAN, 0, false);
+    set_pwm_pct(AGRINET_LIGHT_LEDC_CHAN, 0, false);
+    set_servo_pct(AGRINET_WINDOW_LEDC_CHAN, 0);
 
     s_state.timestamp_ms = (uint32_t)(esp_timer_get_time() / 1000);
     AG_LOGI(TAG, "actuators initialised (pump,fan,light,heater,window)");
@@ -108,32 +108,32 @@ esp_err_t app_actuators_apply(const agrinet_actuator_state_t *state,
 
     if (changed_mask & AGRINET_ACT_CHANGE_PUMP) {
         uint8_t pct = state->pump_level > 0 ? state->pump_level : 100;
-        set_pwm_pct(AGRONET_PUMP_LEDC_CHAN, pct, state->pump == AGRINET_ACT_ON);
+        set_pwm_pct(AGRINET_PUMP_LEDC_CHAN, pct, state->pump == AGRINET_ACT_ON);
         s_state.pump = state->pump;
         s_state.pump_level = state->pump_level;
         AG_LOGI(TAG, "pump %s level=%u", state->pump == AGRINET_ACT_ON ? "ON" : "OFF", pct);
     }
     if (changed_mask & AGRINET_ACT_CHANGE_FAN) {
         uint8_t pct = state->fan_speed > 0 ? state->fan_speed : 100;
-        set_pwm_pct(AGRONET_FAN_LEDC_CHAN, pct, state->fan == AGRINET_ACT_ON);
+        set_pwm_pct(AGRINET_FAN_LEDC_CHAN, pct, state->fan == AGRINET_ACT_ON);
         s_state.fan = state->fan;
         s_state.fan_speed = state->fan_speed;
         AG_LOGI(TAG, "fan %s speed=%u", state->fan == AGRINET_ACT_ON ? "ON" : "OFF", pct);
     }
     if (changed_mask & AGRINET_ACT_CHANGE_LIGHT) {
         uint8_t pct = state->grow_light_level > 0 ? state->grow_light_level : 100;
-        set_pwm_pct(AGRONET_LIGHT_LEDC_CHAN, pct, state->grow_light == AGRINET_ACT_ON);
+        set_pwm_pct(AGRINET_LIGHT_LEDC_CHAN, pct, state->grow_light == AGRINET_ACT_ON);
         s_state.grow_light = state->grow_light;
         s_state.grow_light_level = state->grow_light_level;
         AG_LOGI(TAG, "light %s level=%u", state->grow_light == AGRINET_ACT_ON ? "ON" : "OFF", pct);
     }
     if (changed_mask & AGRINET_ACT_CHANGE_HEATER) {
-        gpio_set_level(AGRONET_HEATER_GPIO, state->heater == AGRINET_ACT_ON ? 1 : 0);
+        gpio_set_level(AGRINET_HEATER_GPIO, state->heater == AGRINET_ACT_ON ? 1 : 0);
         s_state.heater = state->heater;
         AG_LOGI(TAG, "heater %s", state->heater == AGRINET_ACT_ON ? "ON" : "OFF");
     }
     if (changed_mask & AGRINET_ACT_CHANGE_WINDOW) {
-        set_servo_pct(AGRONET_WINDOW_LEDC_CHAN, state->window == AGRINET_ACT_ON ? 100 : 0);
+        set_servo_pct(AGRINET_WINDOW_LEDC_CHAN, state->window == AGRINET_ACT_ON ? 100 : 0);
         s_state.window = state->window;
         AG_LOGI(TAG, "window %s", state->window == AGRINET_ACT_ON ? "OPEN" : "CLOSED");
     }

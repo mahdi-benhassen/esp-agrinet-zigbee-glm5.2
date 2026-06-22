@@ -146,17 +146,17 @@ static void register_sensor_endpoints(void)
         ESP_ZB_ZCL_CLUSTER_SERVER_ROLE);
 
     /* Manufacturer-specific soil moisture cluster */
-    esp_zb_attribute_list_t *soil = esp_zb_zcl_cluster_create(AGRONET_CLUSTER_SOIL_MOISTURE);
+    esp_zb_attribute_list_t *soil = esp_zb_zcl_cluster_create(AGRINET_CLUSTER_SOIL_MOISTURE);
     esp_zb_cluster_list_add_custom_cluster(cluster_list, soil,
         ESP_ZB_ZCL_CLUSTER_SERVER_ROLE, AGRINET_MANUFACTURER_CODE);
 
     /* Manufacturer-specific CO2 cluster */
-    esp_zb_attribute_list_t *co2 = esp_zb_zcl_cluster_create(AGRONET_CLUSTER_CO2_MEAS);
+    esp_zb_attribute_list_t *co2 = esp_zb_zcl_cluster_create(AGRINET_CLUSTER_CO2_MEAS);
     esp_zb_cluster_list_add_custom_cluster(cluster_list, co2,
         ESP_ZB_ZCL_CLUSTER_SERVER_ROLE, AGRINET_MANUFACTURER_CODE);
 
     /* AgriNet configuration cluster */
-    esp_zb_attribute_list_t *cfg = esp_zb_zcl_cluster_create(AGRONET_CLUSTER_AGRINET_CFG);
+    esp_zb_attribute_list_t *cfg = esp_zb_zcl_cluster_create(AGRINET_CLUSTER_AGRINET_CFG);
     esp_zb_cluster_list_add_custom_cluster(cluster_list, cfg,
         ESP_ZB_ZCL_CLUSTER_SERVER_ROLE, AGRINET_MANUFACTURER_CODE);
 
@@ -171,14 +171,14 @@ static void register_sensor_endpoints(void)
     esp_zb_device_register(ep_list);
 
     /* Now register the custom cluster attributes */
-    agrinet_register_soil_moisture_cluster(AGRONET_EP_SENSOR);
-    agrinet_register_co2_cluster(AGRONET_EP_SENSOR);
+    agrinet_register_soil_moisture_cluster(AGRINET_EP_SENSOR);
+    agrinet_register_co2_cluster(AGRINET_EP_SENSOR);
 
     agrinet_thresholds_t th = AGRINET_DEFAULT_THRESHOLDS;
-    agrinet_register_config_cluster(AGRONET_EP_SENSOR, &th);
+    agrinet_register_config_cluster(AGRINET_EP_SENSOR, &th);
 
     /* Configure default reporting on standard measurement clusters */
-    agrinet_configure_default_reporting(AGRONET_EP_SENSOR);
+    agrinet_configure_default_reporting(AGRINET_EP_SENSOR);
 
     AG_LOGI(TAG, "sensor endpoint registered on ep %d", AGRINET_EP_SENSOR);
 }
@@ -203,38 +203,38 @@ static void sensor_task(void *arg)
 
             /* Update standard Zigbee attributes (will be reported via the
              * reporting config set in agrinet_configure_default_reporting) */
-            esp_zb_zcl_set_attribute_val(AGRONET_EP_SENSOR,
+            esp_zb_zcl_set_attribute_val(AGRINET_EP_SENSOR,
                 ESP_ZB_ZCL_CLUSTER_ID_TEMP_MEASUREMENT,
                 ESP_ZB_ZCL_CLUSTER_SERVER_ROLE,
                 ESP_ZB_ZCL_ATTR_TEMP_MEASUREMENT_VALUE_ID,
                 &snap.temperature_centideg, false);
 
-            esp_zb_zcl_set_attribute_val(AGRONET_EP_SENSOR,
+            esp_zb_zcl_set_attribute_val(AGRINET_EP_SENSOR,
                 ESP_ZB_ZCL_CLUSTER_ID_REL_HUMIDITY_MEASUREMENT,
                 ESP_ZB_ZCL_CLUSTER_SERVER_ROLE,
                 ESP_ZB_ZCL_ATTR_REL_HUMIDITY_MEASUREMENT_VALUE_ID,
                 &snap.humidity_centi_pct, false);
 
-            esp_zb_zcl_set_attribute_val(AGRONET_EP_SENSOR,
+            esp_zb_zcl_set_attribute_val(AGRINET_EP_SENSOR,
                 ESP_ZB_ZCL_CLUSTER_ID_PRESSURE_MEASUREMENT,
                 ESP_ZB_ZCL_CLUSTER_SERVER_ROLE,
                 ESP_ZB_ZCL_ATTR_PRESSURE_MEASUREMENT_VALUE_ID,
                 &snap.pressure_pa, false);
 
-            esp_zb_zcl_set_attribute_val(AGRONET_EP_SENSOR,
+            esp_zb_zcl_set_attribute_val(AGRINET_EP_SENSOR,
                 ESP_ZB_ZCL_CLUSTER_ID_ILLUMINANCE_MEASUREMENT,
                 ESP_ZB_ZCL_CLUSTER_SERVER_ROLE,
                 ESP_ZB_ZCL_ATTR_ILLUMINANCE_MEASUREMENT_VALUE_ID,
                 &snap.illuminance_lux, false);
 
             /* Update custom clusters (they fire their own reports) */
-            agrinet_update_soil_moisture(AGRONET_EP_SENSOR,
+            agrinet_update_soil_moisture(AGRINET_EP_SENSOR,
                 snap.soil_moisture_centi_pct, snap.soil_temp_centideg);
-            agrinet_update_co2(AGRONET_EP_SENSOR, snap.co2_ppm);
+            agrinet_update_co2(AGRINET_EP_SENSOR, snap.co2_ppm);
 
             /* Update battery percentage */
             uint8_t bat = (uint8_t)(snap.battery_pct < 0 ? 0 : snap.battery_pct);
-            esp_zb_zcl_set_attribute_val(AGRONET_EP_SENSOR,
+            esp_zb_zcl_set_attribute_val(AGRINET_EP_SENSOR,
                 ESP_ZB_ZCL_CLUSTER_ID_POWER_CONFIG,
                 ESP_ZB_ZCL_CLUSTER_SERVER_ROLE,
                 ESP_ZB_ZCL_ATTR_POWER_CONFIG_BATTERY_PERCENTAGE_REMAINING_ID,
@@ -243,7 +243,7 @@ static void sensor_task(void *arg)
             /* Compute alert mask */
             uint8_t alert_mask = 0;
             agrinet_thresholds_t th = AGRINET_DEFAULT_THRESHOLDS;
-            agrinet_read_config(AGRONET_EP_SENSOR, &th);
+            agrinet_read_config(AGRINET_EP_SENSOR, &th);
             if (snap.temperature_centideg > th.temp_high_centideg) alert_mask |= AGRINET_ALERT_TEMP_HIGH;
             if (snap.temperature_centideg < th.temp_low_centideg)  alert_mask |= AGRINET_ALERT_TEMP_LOW;
             if (snap.humidity_centi_pct > th.humidity_high_centi_pct) alert_mask |= AGRINET_ALERT_HUMIDITY_HIGH;
@@ -256,7 +256,7 @@ static void sensor_task(void *arg)
 
             /* Persist alert mask in the config cluster so the gateway can
              * read it via a ZCL read */
-            esp_zb_zcl_set_attribute_val(AGRONET_EP_SENSOR,
+            esp_zb_zcl_set_attribute_val(AGRINET_EP_SENSOR,
                 AGRINET_CLUSTER_AGRINET_CFG, ESP_ZB_ZCL_CLUSTER_SERVER_ROLE,
                 AGRINET_ATTR_CFG_ALERT_MASK, &alert_mask, false);
 
