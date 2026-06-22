@@ -20,19 +20,12 @@ jobs:
         with:
           submodules: recursive
 
-      - name: Install ESP-IDF
+      - name: Build gateway
         uses: espressif/esp-idf-ci-action@v1
         with:
           esp_idf_version: v5.2.3
           target: esp32s3
-          path: ${{ github.workspace }}
-
-      - name: Build gateway
-        run: |
-          source $IDF_PATH/export.sh
-          cd gateway
-          idf.py set-target esp32s3
-          idf.py build
+          path: gateway
 
       - name: Upload build artifacts
         uses: actions/upload-artifact@v4
@@ -56,19 +49,12 @@ jobs:
         with:
           submodules: recursive
 
-      - name: Install ESP-IDF
+      - name: Build sensor node
         uses: espressif/esp-idf-ci-action@v1
         with:
           esp_idf_version: v5.2.3
           target: esp32h2
-          path: ${{ github.workspace }}
-
-      - name: Build sensor node
-        run: |
-          source $IDF_PATH/export.sh
-          cd nodes/sensor_node
-          idf.py set-target esp32h2
-          idf.py build
+          path: nodes/sensor_node
 
       - name: Upload build artifacts
         uses: actions/upload-artifact@v4
@@ -92,19 +78,12 @@ jobs:
         with:
           submodules: recursive
 
-      - name: Install ESP-IDF
+      - name: Build actuator node
         uses: espressif/esp-idf-ci-action@v1
         with:
           esp_idf_version: v5.2.3
           target: esp32h2
-          path: ${{ github.workspace }}
-
-      - name: Build actuator node
-        run: |
-          source $IDF_PATH/export.sh
-          cd nodes/actuator_node
-          idf.py set-target esp32h2
-          idf.py build
+          path: nodes/actuator_node
 
       - name: Upload build artifacts
         uses: actions/upload-artifact@v4
@@ -118,6 +97,7 @@ jobs:
 
   # ----------------------------------------------------------------------
   # Build the ESP32-H2 RCP firmware (radio coprocessor for the gateway)
+  # Uses the ot_rcp example from ESP-IDF with OPENTHREAD_NCP_VENDOR_HOOK
   # ----------------------------------------------------------------------
   build-rcp:
     name: RCP (ESP32-H2 radio coprocessor)
@@ -125,46 +105,33 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
-        with:
-          submodules: recursive
 
-      - name: Install ESP-IDF
+      - name: Build RCP from ESP-IDF ot_rcp example
         uses: espressif/esp-idf-ci-action@v1
         with:
           esp_idf_version: v5.2.3
           target: esp32h2
-          path: ${{ github.workspace }}
-
-      - name: Clone esp-zigbee-sdk
-        run: |
-          git clone --depth=1 --branch v0.5.0 \
-            https://github.com/espressif/esp-zigbee-sdk.git \
-            ${{ github.workspace }}/esp-zigbee-sdk
-
-      - name: Copy sdkconfig
-        run: |
-          cp rcp/sdkconfig.defaults \
-             ${{ github.workspace }}/esp-zigbee-sdk/examples/esp_zigbee_gw/rcp/sdkconfig.defaults
-
-      - name: Build RCP
-        run: |
-          source $IDF_PATH/export.sh
-          cd ${{ github.workspace }}/esp-zigbee-sdk/examples/esp_zigbee_gw/rcp
-          idf.py set-target esp32h2
-          idf.py build
+          path: rcp
+          command: >-
+            cp sdkconfig.defaults /opt/esp/idf/examples/openthread/ot_rcp/sdkconfig.defaults
+            && cd /opt/esp/idf/examples/openthread/ot_rcp
+            && idf.py set-target esp32h2
+            && idf.py build
+            && mkdir -p /app/${{ github.repository }}/rcp/build
+            && cp build/esp_ot_rcp.bin build/bootloader/bootloader.bin build/partition_table/partition-table.bin /app/${{ github.repository }}/rcp/build/
 
       - name: Upload build artifacts
         uses: actions/upload-artifact@v4
         with:
           name: rcp-esp32h2-firmware
           path: |
-            ${{ github.workspace }}/esp-zigbee-sdk/examples/esp_zigbee_gw/rcp/build/*.bin
-            ${{ github.workspace }}/esp-zigbee-sdk/examples/esp_zigbee_gw/rcp/build/bootloader/bootloader.bin
-            ${{ github.workspace }}/esp-zigbee-sdk/examples/esp_zigbee_gw/rcp/build/partition_table/partition-table.bin
+            rcp/build/esp_ot_rcp.bin
+            rcp/build/bootloader.bin
+            rcp/build/partition-table.bin
           if-no-files-found: warn
 
   # ----------------------------------------------------------------------
-  # Code formatting & static checks (lightweight)
+  # Code formatting check (lightweight, runs on host)
   # ----------------------------------------------------------------------
   lint:
     name: Lint (clang-format check)

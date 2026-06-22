@@ -1,20 +1,27 @@
 # ESP32-H2 Radio Coprocessor (RCP) configuration
 #
-# The ESP32-H2 firmware that runs on the gateway's radio side.
-# It uses esp-hosty / esp-zigbee-sdk's RCP example which we don't
-# duplicate here - instead we provide the sdkconfig and CMake
-# wrappers needed to build it.
+# Built from ESP-IDF examples/openthread/ot_rcp with the Zigbee vendor hook.
+# The CI workflow copies this file into the ot_rcp example directory before
+# building.
 #
-# In production, use esp-zigbee-sdk/examples/esp_zigbee_gw/rcp and
-# flash that to the ESP32-H2 of the gateway. This folder keeps the
-# sdkconfig.defaults used in this project's CI.
+# The key option is OPENTHREAD_NCP_VENDOR_HOOK which adds the Zigbee-specific
+# Spinel hooks needed by the ESP Zigbee gateway host firmware.
 
 CONFIG_IDF_TARGET="esp32h2"
-CONFIG_ZB_ENABLED=y
-CONFIG_ZB_RCP=y
-CONFIG_ZB_CHANNEL=15
-CONFIG_ZB_TX_POWER=20
+
+# Enable Zigbee vendor hook in the OpenThread RCP
+CONFIG_OPENTHREAD_NCP_VENDOR_HOOK=y
+
+# UART console on UART0 (USB bridge on DevKitM)
 CONFIG_ESP_CONSOLE_UART_DEFAULT=y
-CONFIG_ESP_CONSOLE_UART_CUSTOM=y
-CONFIG_ESP_CONSOLE_UART_CUSTOM_NUM=1
-CONFIG_ESP_CONSOLE_SECONDARY_USB_SERIAL_JTAG=n
+
+# Size-optimisation defaults (matching ot_rcp example)
+CONFIG_COMPILER_OPTIMIZATION_SIZE=y
+CONFIG_COMPILER_OPTIMIZATION_ASSERTIONS_SILENT=y
+CONFIG_COMPILER_OPTIMIZATION_CHECKS_SILENT=y
+CONFIG_ESP_ERR_TO_NAME_LOOKUP=n
+CONFIG_ESP_SYSTEM_PANIC_SILENT_REBOOT=y
+CONFIG_LOG_DEFAULT_LEVEL_NONE=y
+CONFIG_LIBC_NEWLIB_NANO_FORMAT=y
+CONFIG_OPENTHREAD_LOG_LEVEL_DYNAMIC=n
+CONFIG_OPENTHREAD_LOG_LEVEL_NONE=y
