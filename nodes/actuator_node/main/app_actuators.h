@@ -14,6 +14,7 @@
 
 #include "esp_err.h"
 #include "agrinet_types.h"
+#include "agrinet_mqtt_schema.h"
 #include <stdint.h>
 
 #ifdef __cplusplus

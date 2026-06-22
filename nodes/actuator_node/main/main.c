@@ -3,21 +3,19 @@
  * Copyright (c) 2025 ESP-AgriNet Project
  *
  * ESP32-H2 router firmware that exposes 5 actuator endpoints:
- *   EP11 = pump      (on/off + level)
- *   EP12 = fan       (on/off + level)
- *   EP13 = grow light (on/off + level)
- *   EP14 = heater    (on/off only)
- *   EP15 = window    (on/off only - servo)
+ *   EP11 = pump      (on/off)
+ *   EP12 = fan       (on/off)
+ *   EP13 = grow light (on/off)
+ *   EP14 = heater    (on/off)
+ *   EP15 = window    (on/off - servo)
  *
- * Receives ZCL on/off and level-control commands from the gateway and
- * applies them to the physical outputs via app_actuators_apply().
- *
- * Hardware: ESP32-H2-DevKitM-1 + 4 relay modules + 1 servo + LED driver
- *           Mains-powered (always-on router)
+ * Receives ZCL on/off commands from the gateway and applies them
+ * to the physical outputs via app_actuators_apply().
  */
 #include "app_actuators.h"
 #include "agrinet_log.h"
 #include "agrinet_types.h"
+#include "agrinet_mqtt_schema.h"
 #include "agrinet_clusters.h"
 
 #include "esp_zigbee_core.h"
@@ -49,17 +47,16 @@ static agrinet_actuator_state_t s_act_state = {0};
 #define ESP_ZB_DEFAULT_HOST_CONFIG() { .host_connection_mode = HOST_CONNECTION_MODE_NONE, }
 
 /* --------------------------------------------------------------------- */
-/* Helper to build an actuator endpoint (on/off + optional level)        */
+/* Helper to build an actuator endpoint (on/off only)                     */
 /* --------------------------------------------------------------------- */
-static void add_actuator_endpoint(esp_zb_ep_list_t *ep_list, uint8_t ep_id,
-                                  uint8_t device_id, bool has_level)
+static void add_actuator_endpoint(esp_zb_ep_list_t *ep_list, uint8_t ep_id, uint16_t device_id)
 {
-    esp_zb_cluster_list_t *cl = esp_zb_cluster_list_create();
+    esp_zb_cluster_list_t *cl = esp_zb_zcl_cluster_list_create();
 
     /* Basic */
     esp_zb_basic_cluster_cfg_t basic_cfg = {
         .zcl_version = ESP_ZB_ZCL_BASIC_ZCL_VERSION_DEFAULT_VALUE,
-        .power_source = ESP_ZB_ZCL_BASIC_POWER_SOURCE_MAINS_SINGLE_PHASE_0,
+        .power_source = ESP_ZB_ZCL_BASIC_POWER_SOURCE_DEFAULT_VALUE,
     };
     esp_zb_attribute_list_t *basic = esp_zb_basic_cluster_create(&basic_cfg);
     esp_zb_cluster_list_add_basic_cluster(cl, basic, ESP_ZB_ZCL_CLUSTER_SERVER_ROLE);
@@ -70,151 +67,120 @@ static void add_actuator_endpoint(esp_zb_ep_list_t *ep_list, uint8_t ep_id,
     esp_zb_cluster_list_add_identify_cluster(cl, identify, ESP_ZB_ZCL_CLUSTER_SERVER_ROLE);
 
     /* On/off */
-    esp_zb_on_off_cluster_cfg_t onoff_cfg = { .on_off = ESP_ZB_ZCL_ON_OFF_OFF };
+    esp_zb_on_off_cluster_cfg_t onoff_cfg = { .on_off = 0 };
     esp_zb_attribute_list_t *onoff = esp_zb_on_off_cluster_create(&onoff_cfg);
     esp_zb_cluster_list_add_on_off_cluster(cl, onoff, ESP_ZB_ZCL_CLUSTER_SERVER_ROLE);
 
-    /* Level control (optional) */
-    if (has_level) {
-        esp_zb_level_control_cluster_cfg_t lvl_cfg = { .current_level = 0 };
-        esp_zb_attribute_list_t *level = esp_zb_level_control_cluster_create(&lvl_cfg);
-        esp_zb_cluster_list_add_level_control_cluster(cl, level, ESP_ZB_ZCL_CLUSTER_SERVER_ROLE);
-    }
-
-    esp_zb_endpoint_config_t ep_cfg = {
-        .endpoint = ep_id,
-        .app_profile_id = ESP_ZB_AF_HA_PROFILE_ID,
-        .app_device_id = device_id,
-        .app_device_version = 0,
-    };
-    esp_zb_ep_list_add_ep(ep_list, cl, ep_cfg);
+    esp_zb_ep_list_add_ep(ep_list, cl, ep_id, ESP_ZB_AF_HA_PROFILE_ID, device_id);
 }
 
 /* --------------------------------------------------------------------- */
-/* ZCL command handler (on/off and level)                                */
+/* ZCL command handler (on/off)                                          */
 /* --------------------------------------------------------------------- */
-static void actuator_zcl_cb(esp_zb_core_action_callback_id_t cb_id,
-                            const void *message)
+static esp_err_t actuator_zcl_cb(esp_zb_core_action_callback_id_t cb_id,
+                                 const void *message)
 {
-    if (cb_id != ESP_ZB_CORE_CMD_ON_OFF_CB_ID &&
-        cb_id != ESP_ZB_CORE_CMD_LEVEL_CONTROL_MOVE_TO_LEVEL_CB_ID) {
-        return;
-    }
-    /* The esp-zigbee-sdk exposes the source endpoint and value via the
-     * callback params. We use the endpoint to map to our actuators. */
+    if (cb_id == ESP_ZB_CORE_SET_ATTR_VALUE_CB_ID) {
+        const esp_zb_zcl_set_attr_value_message_t *msg =
+            (const esp_zb_zcl_set_attr_value_message_t *)message;
+        uint8_t ep = msg->info.dst_endpoint;
+        bool on = false;
 
-    /* Map the endpoint back to the right actuator */
-    uint8_t ep = 0;
-    uint32_t changed = 0;
-    agrinet_actuator_state_t st = s_act_state;
+        if (msg->info.cluster == ESP_ZB_ZCL_CLUSTER_ID_ON_OFF &&
+            msg->attribute.id == ESP_ZB_ZCL_ATTR_ON_OFF_ON_OFF_ID &&
+            msg->attribute.data.value) {
+            on = *(bool *)msg->attribute.data.value;
+        }
 
-    if (cb_id == ESP_ZB_CORE_CMD_ON_OFF_CB_ID) {
-        const esp_zb_zcl_on_off_message_t *msg =
-            (const esp_zb_zcl_on_off_message_t *)message;
-        ep = msg->zcl_basic_cmd.dst_endpoint;
-        bool on = (msg->command == ESP_ZB_ZCL_CMD_ON_OFF_ON_ID);
         AG_LOGI(TAG, "on/off cmd ep=%d on=%d", ep, on);
+
+        agrinet_actuator_state_t st = s_act_state;
+        uint32_t changed = 0;
         switch (ep) {
             case AGRINET_EP_ACTUATOR_PUMP:   st.pump = on ? AGRINET_ACT_ON : AGRINET_ACT_OFF;
-                if (st.pump_level == 0) st.pump_level = 100;
                 changed = AGRINET_ACT_CHANGE_PUMP; break;
             case AGRINET_EP_ACTUATOR_FAN:    st.fan = on ? AGRINET_ACT_ON : AGRINET_ACT_OFF;
-                if (st.fan_speed == 0) st.fan_speed = 100;
                 changed = AGRINET_ACT_CHANGE_FAN; break;
             case AGRINET_EP_ACTUATOR_LIGHT:  st.grow_light = on ? AGRINET_ACT_ON : AGRINET_ACT_OFF;
-                if (st.grow_light_level == 0) st.grow_light_level = 100;
                 changed = AGRINET_ACT_CHANGE_LIGHT; break;
             case AGRINET_EP_ACTUATOR_HEATER: st.heater = on ? AGRINET_ACT_ON : AGRINET_ACT_OFF;
                 changed = AGRINET_ACT_CHANGE_HEATER; break;
             case AGRINET_EP_ACTUATOR_WINDOW: st.window = on ? AGRINET_ACT_ON : AGRINET_ACT_OFF;
                 changed = AGRINET_ACT_CHANGE_WINDOW; break;
-            default: return;
+            default: return ESP_OK;
         }
         app_actuators_apply(&st, changed);
         s_act_state = st;
-
-        /* Update the on/off attribute to confirm state */
-        uint8_t onoff_val = on ? ESP_ZB_ZCL_ON_OFF_ON : ESP_ZB_ZCL_ON_OFF_OFF;
-        esp_zb_zcl_set_attribute_val(ep, ESP_ZB_ZCL_CLUSTER_ID_ON_OFF,
-            ESP_ZB_ZCL_CLUSTER_SERVER_ROLE,
-            ESP_ZB_ZCL_ATTR_ON_OFF_ON_OFF_ID, &onoff_val, false);
-    } else if (cb_id == ESP_ZB_CORE_CMD_LEVEL_CONTROL_MOVE_TO_LEVEL_CB_ID) {
-        const esp_zb_zcl_move_to_level_message_t *msg =
-            (const esp_zb_zcl_move_to_level_message_t *)message;
-        ep = msg->zcl_basic_cmd.dst_endpoint;
-        uint8_t level = msg->level;
-        AG_LOGI(TAG, "level cmd ep=%d level=%u", ep, level);
-        switch (ep) {
-            case AGRINET_EP_ACTUATOR_PUMP:   st.pump_level = level;
-                if (level > 0) st.pump = AGRINET_ACT_ON;
-                changed = AGRINET_ACT_CHANGE_PUMP; break;
-            case AGRINET_EP_ACTUATOR_FAN:    st.fan_speed = level;
-                if (level > 0) st.fan = AGRINET_ACT_ON;
-                changed = AGRINET_ACT_CHANGE_FAN; break;
-            case AGRINET_EP_ACTUATOR_LIGHT:  st.grow_light_level = level;
-                if (level > 0) st.grow_light = AGRINET_ACT_ON;
-                changed = AGRINET_ACT_CHANGE_LIGHT; break;
-            default: return;
-        }
-        app_actuators_apply(&st, changed);
-        s_act_state = st;
-
-        /* Update the level attribute */
-        esp_zb_zcl_set_attribute_val(ep, ESP_ZB_ZCL_CLUSTER_ID_LEVEL_CONTROL,
-            ESP_ZB_ZCL_CLUSTER_SERVER_ROLE,
-            ESP_ZB_ZCL_ATTR_LEVEL_CONTROL_CURRENT_LEVEL_ID, &level, false);
     }
+    return ESP_OK;
 }
 
 /* --------------------------------------------------------------------- */
-/* Zigbee stack status callback                                          */
+/* Zigbee app signal handler                                             */
 /* --------------------------------------------------------------------- */
-static void actuator_zb_stack_status(esp_zb_zdo_signal_type_t sig,
-                                     esp_zb_zdo_signal_cb_params_t *params)
+void esp_zb_app_signal_handler(esp_zb_app_signal_t *signal_struct)
 {
-    (void)params;
-    switch (sig) {
+    uint32_t *p_sg_p       = signal_struct->p_app_signal;
+    esp_err_t err_status   = signal_struct->esp_err_status;
+    esp_zb_app_signal_type_t sig_type = *p_sg_p;
+
+    switch (sig_type) {
     case ESP_ZB_ZDO_SIGNAL_SKIP_STARTUP:
-        AG_LOGI(TAG, "Zigbee stack initialised, joining network...");
+        AG_LOGI(TAG, "Zigbee stack initialized, joining network...");
         esp_zb_bdb_start_top_level_commissioning(ESP_ZB_BDB_MODE_NETWORK_STEERING);
         break;
-    case ESP_ZB_BDB_SIGNAL_STEERING:
-        AG_LOGI(TAG, "network steering complete");
+    case ESP_ZB_BDB_SIGNAL_DEVICE_FIRST_START:
+    case ESP_ZB_BDB_SIGNAL_DEVICE_REBOOT:
+        if (err_status == ESP_OK) {
+            AG_LOGI(TAG, "Device started up in %s factory-reset mode",
+                    esp_zb_bdb_is_factory_new() ? "" : "non");
+            if (esp_zb_bdb_is_factory_new()) {
+                AG_LOGI(TAG, "Start network steering");
+                esp_zb_bdb_start_top_level_commissioning(ESP_ZB_BDB_MODE_NETWORK_STEERING);
+            } else {
+                AG_LOGI(TAG, "Device rebooted");
+            }
+        } else {
+            AG_LOGW(TAG, "Failed to initialize Zigbee stack (status: %s)",
+                    esp_err_to_name(err_status));
+        }
         break;
-    case ESP_ZB_ZDO_SIGNAL_LEAVE:
-        AG_LOGW(TAG, "left network");
+    case ESP_ZB_BDB_SIGNAL_STEERING:
+        if (err_status == ESP_OK) {
+            AG_LOGI(TAG, "Joined network successfully");
+        } else {
+            AG_LOGI(TAG, "Network steering was not successful (status: %s)",
+                    esp_err_to_name(err_status));
+        }
         break;
     default:
-        AG_LOGD(TAG, "zb signal 0x%02x", sig);
+        AG_LOGI(TAG, "ZDO signal: 0x%x, status: %s", sig_type, esp_err_to_name(err_status));
         break;
     }
 }
 
 /* --------------------------------------------------------------------- */
-/* Endpoint registration                                                 */
+/* Zigbee task                                                            */
 /* --------------------------------------------------------------------- */
-static void register_actuator_endpoints(void)
+static void esp_zb_task(void *pvParameters)
 {
+    esp_zb_cfg_t zb_nwk_cfg = ESP_ZB_ZR_CONFIG();
+    esp_zb_init(&zb_nwk_cfg);
+
+    /* Register actuator endpoints */
     esp_zb_ep_list_t *ep_list = esp_zb_ep_list_create();
-    add_actuator_endpoint(ep_list, AGRINET_EP_ACTUATOR_PUMP,
-        ESP_ZB_HA_COLOR_DIMMABLE_LIGHT_DEVICE_ID, true);     /* level */
-    add_actuator_endpoint(ep_list, AGRINET_EP_ACTUATOR_FAN,
-        ESP_ZB_HA_FAN_DEVICE_ID, true);                      /* level */
-    add_actuator_endpoint(ep_list, AGRINET_EP_ACTUATOR_LIGHT,
-        ESP_ZB_HA_DIMMABLE_LIGHT_DEVICE_ID, true);           /* level */
-    add_actuator_endpoint(ep_list, AGRINET_EP_ACTUATOR_HEATER,
-        ESP_ZB_HA_HEATING_COOLING_UNIT_DEVICE_ID, false);
-    add_actuator_endpoint(ep_list, AGRINET_EP_ACTUATOR_WINDOW,
-        ESP_ZB_HA_WINDOW_COVERING_DEVICE_ID, false);
-    esp_zb_device_register(ep_list);
+    add_actuator_endpoint(ep_list, AGRINET_EP_ACTUATOR_PUMP,   ESP_ZB_HA_ON_OFF_OUTPUT_DEVICE_ID);
+    add_actuator_endpoint(ep_list, AGRINET_EP_ACTUATOR_FAN,    ESP_ZB_HA_ON_OFF_OUTPUT_DEVICE_ID);
+    add_actuator_endpoint(ep_list, AGRINET_EP_ACTUATOR_LIGHT,  ESP_ZB_HA_ON_OFF_OUTPUT_DEVICE_ID);
+    add_actuator_endpoint(ep_list, AGRINET_EP_ACTUATOR_HEATER, ESP_ZB_HA_ON_OFF_OUTPUT_DEVICE_ID);
+    add_actuator_endpoint(ep_list, AGRINET_EP_ACTUATOR_WINDOW, ESP_ZB_HA_ON_OFF_OUTPUT_DEVICE_ID);
+    ESP_ERROR_CHECK(esp_zb_device_register(ep_list));
 
-    /* Register ZCL command callbacks */
     esp_zb_core_action_handler_register(actuator_zcl_cb);
-    esp_zb_device_add_custom_cb(ESP_ZB_CORE_CMD_ON_OFF_CB_ID, NULL);
-    esp_zb_device_add_custom_cb(ESP_ZB_CORE_CMD_LEVEL_CONTROL_MOVE_TO_LEVEL_CB_ID, NULL);
+    esp_zb_set_primary_network_channel_set(ESP_ZB_PRIMARY_CHANNEL_MASK);
 
-    AG_LOGI(TAG, "actuator endpoints registered (ep %d-%d)",
-            AGRINET_EP_ACTUATOR_PUMP, AGRINET_EP_ACTUATOR_WINDOW);
+    ESP_ERROR_CHECK(esp_zb_start(false));
+    esp_zb_main_loop_iteration();
 }
 
 /* --------------------------------------------------------------------- */
@@ -244,15 +210,8 @@ void app_main(void)
         .radio_config = ESP_ZB_DEFAULT_RADIO_CONFIG(),
         .host_config  = ESP_ZB_DEFAULT_HOST_CONFIG(),
     };
-    ESP_ERROR_CHECK(esp_zb_platform_configure(&config));
+    ESP_ERROR_CHECK(esp_zb_platform_config(&config));
 
-    /* Router config (mains-powered) */
-    esp_zb_cfg_t zb_nwk_cfg = ESP_ZB_ZR_CONFIG();
-    esp_zb_init(&zb_nwk_cfg);
-
-    register_actuator_endpoints();
-    esp_zb_register_stack_status_handler(actuator_zb_stack_status);
-
-    ESP_ERROR_CHECK(esp_zb_start(false));
-    esp_zb_main_loop_iteration();
+    /* Start Zigbee task */
+    xTaskCreate(esp_zb_task, "Zigbee_main", 4096, NULL, 5, NULL);
 }
