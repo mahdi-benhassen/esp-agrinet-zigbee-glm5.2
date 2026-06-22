@@ -10,6 +10,7 @@ idf_component_register(
         agrinet_common
         espressif__esp-zigbee-lib
         espressif__esp-zboss-lib
+        driver
         esp_wifi
         esp_event
         esp_netif
